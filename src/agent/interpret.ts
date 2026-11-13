@@ -358,6 +358,8 @@ export async function interpret(
       if (decision.intent !== "unknown" && decision.confidence >= 0.4) {
         const plan = buildPlanFromIntent(decision.intent, transcript, snapshot)
         if (isPlan(plan)) return { ...plan, transcript }
+        // If plan building returned a specific error (e.g., disabled control), use it.
+        if (plan && !isPlan(plan)) return plan
       }
       // Gemini returned a result but confidence too low or unknown.
       // Include the Gemini result in the hint for debugging.
