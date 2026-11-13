@@ -618,11 +618,11 @@ other sites, WebMCP registration, TTS replies, i18n, offline mode.
 
 ## 16. Open questions
 
-1. **Decision model provider.** "Jev" is not a provider I could verify — which API and key do
-   you have (OpenAI, Groq, OpenRouter, Google, local)? Same for STT when we move past the browser.
+1. ~~**Decision model provider.**~~ Answered: Gemini Decisions API (`gemini-decision-1`) for intent
+   classification. Falls back to grammar when no key is set. Jev (TypeSafe) is a future upgrade.
 2. ~~**M0 identity.**~~ Answered: the Create Post form, which becomes the real composer. Built.
 3. **Bun proxy.** OK to add `server/` + `bun run dev` running both? Without it, no LLM key can be
-   shipped safely.
+   shipped safely. Currently using localStorage + env var for the key.
 4. **Feed mechanics.** Snap one post per viewport (strong "scroll one post" semantics) or a
    continuous list where "current post" is the centered one? I recommend snap.
 5. **TTS replies.** Speak confirmations back ("Liked") in M3, or text-only for the MVP?
