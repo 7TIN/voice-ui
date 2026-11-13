@@ -8,8 +8,44 @@ through the ui-sdk agent bridge, calls validated component actions, and verifies
 
 ## Status
 
-Planning. The first slice is a Create Post form built only from ui-sdk components, used to prove
-agent-to-component control before voice or the feed is built.
+M0 is built: a Create Post form from ui-sdk components only, a single agent bridge with a
+human-approval gate for publishing, and a dev-only inspector that runs bridge actions. Voice and
+the feed are not started.
+
+```bash
+bun install
+bun run dev      # http://localhost:5173, then window.agent.snapshot() in the console
+```
+
+## Scripts
+
+```bash
+bun install
+bun run dev        # Vite dev server
+bun run build      # typecheck + production build
+bun run lint       # oxlint
+bun run test       # Vitest (jsdom)
+bun run test:watch # Vitest in watch mode
+```
+
+## Try the bridge
+
+With the dev server running, open the console:
+
+```js
+await window.agent.act({
+  steps: [
+    { ref: "Post title", action: "setValue", args: ["A quieter web"] },
+    { ref: "Post body", action: "setValue", args: ["Interfaces should be readable."] },
+    { ref: "Community", action: "setValue", args: ["Design"] },
+  ],
+})
+await window.agent.act({ steps: [{ ref: "Publish post", action: "press" }] })
+```
+
+The last call pauses on the in-app approval dialog. Only a person can answer it: the dialog's
+content is `data-agent-hidden`, so it never appears in `snapshot()`.
+
 
 Read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the SDK research, architecture,
 component contract, safety model, and milestone plan.

@@ -3,7 +3,7 @@
 A social feed you can operate with your voice, built on Vercel's [ui-sdk](https://ui-sdk.dev)
 (`@ui-sdk/*`), React 19 + Vite + TypeScript, with Bun as the toolchain.
 
-Status: **planning complete, M0 not started.**
+Status: **M0 built and verified (2026-11-13). M1 (voice) not started.**
 Last researched: ui-sdk `0.1.0-beta.1` (public beta, APIs may change).
 
 ---
@@ -208,7 +208,7 @@ anything else is built, and it is not throwaway: it becomes the app's composer.
 | Title | `Field` + `FieldLabel` + `Input` | `Post title` |
 | Body | `Field` + `FieldLabel` + `Textarea` | `Post body` |
 | Community | `Field` + `Select` (+ `items`) | `Community` |
-| Visibility | `Field` + `Radio` (Everyone / Followers) | `Who can see this` |
+| Visibility | `Field` + `Radio` (Everyone / Followers / Only me) | `Who can see this` |
 | Comments | `Field` + `Switch` | `Allow comments` |
 | Preview | `Dialog` with `DialogTitle` | `Preview post` |
 | Publish | `Button` with `data-agent-confirm="Publishes this post to the feed"` | `Publish post` |
@@ -221,6 +221,28 @@ Notes:
 - The form keeps values in React state through `onValueChange`, never via DOM reads.
 - No `disabled` Publish. Use `focusableWhenDisabled` so the control stays discoverable and its
   hint explains what is missing.
+
+**Built** in `src/components/compose-page.tsx` (the form, the preview dialog, the discard alert
+dialog, and the published state), with the page chrome in `src/App.tsx`. What the build changed
+from the plan above:
+
+- The radio hints ("Anyone on Murmur") sit next to each label. ui-sdk composes an item's label
+  from its text content, so the hint is `aria-hidden="true"`; otherwise the agent sees
+  `EveryoneAnyone on Murmur`. A test asserts the item labels are exactly the three options.
+- Empty drafts have a `Publish post` Button with `actions: []` (disabled) — the agent cannot
+  publish nothing, and the hint says why.
+- Discard's confirm button reads `Delete draft`, deliberately different from the `Discard draft`
+  trigger, so a `press` step's text matches one button only.
+- `ConfirmationDialog`, the `AgentInspector`, and the toast region are all `data-agent-hidden`:
+  an agent can neither approve its own request nor drive the dev panel.
+- ui-sdk ships no dialog positioning. Its `web.css` theme is not imported, and Tailwind's
+  preflight resets the browser's `margin: auto` on a top-layer dialog, so an unstyled
+  `DialogContent` lands in the top-left corner. `dialogSurfaceClass` in
+  `src/components/button-styles.ts` restores centring with `fixed inset-0 m-auto` plus a
+  `max-height` and scroll, and all three dialogs use it.
+- Verified in headless Chrome through the bridge itself: fill (5 steps), publish refused, publish
+  approved, preview and discard dialogs centred, and the dialog label changing to its title when
+  open (use `ref` for a follow-up step).
 
 ### 5.2 Social app mapping
 
@@ -287,6 +309,11 @@ The model finds targets by label, so labels are the API.
 - Two "Name" fields are fine only if `row` text disambiguates them.
 - Every control gets a label or an `aria-label`. The M0 test walks the whole snapshot and fails
   on any unnamed entry.
+- A dialog is named by its trigger while closed and by its `Title` while open (`Preview post` →
+  `Post preview`). That is fine for a person, but a plan that opens something and then closes it
+  must address the second step by `ref`, not by the old label. The planner replaces labels with
+  refs from the same snapshot before it calls `act`.
+
 
 ---
 
@@ -457,27 +484,39 @@ match, it returns `ask` with the candidates.
   planning/executing = spinner + verb ("Thinking…", "Opening comments…"), error = amber.
 - Live transcript: interim text in lighter weight, final text in normal weight.
 - Command log: each command expands to its steps with ✓/✗ and the model's `say` line.
-- Confirmation card: the exact `data-agent-confirm` sentence, Cancel / Approve, 30s countdown.
+- Confirmation card (built): the exact `data-agent-confirm` sentence, Cancel / Approve, and a note
+  that the request came from an agent. No countdown yet — the bridge's 120s `timeout` aborts the
+  request, which resolves the card as a refusal. It is `data-agent-hidden` on purpose.
 - Errors: plain language plus a suggestion ("I found two posts by Ada. Which one?").
 - Accessibility: the voice panel is a labelled region, status updates are `aria-live="polite"`,
   and the typed fallback is fully keyboard reachable.
+
+The M0 page implements the palette, type, borders and motion above; the sidebar, right rail, mic
+pill, transcript and command log arrive with M1–M3.
+
 
 ---
 
 ## 12. Roadmap
 
-### M0 — Bridge + Create Post form (no voice)
+### M0 — Bridge + Create Post form (no voice) — **done**
 
-Build: `src/agent/bridge.ts` imported first, the form from §5.1, a dev-only "Agent inspector"
-panel showing `snapshot()` and a step runner.
+Built: `src/agent/bridge.ts` imported first in `src/main.tsx`, the form from §5.1, a dev-only
+`AgentInspector` panel that lists `snapshot()`, runs one `act` step, and shows the raw result.
 
-Done when:
+Verified:
 
-- `bun run build` and `bun run lint` pass.
-- Every snapshot entry has a label; no entry has `actions: []`.
-- From the console: fill title, body, community, toggle comments, publish — after approving.
-- A Vitest test asserts the labels exist and `act` changes the fields (the SDK's agent test).
-- Mouse/keyboard use works identically with the bridge removed.
+- `bun run lint`, `bun run test` (4 tests), and `bun run build` all pass.
+- Every snapshot entry has a label and at least one action, except the empty-draft `Publish post`
+  (deliberately `disabled`, `actions: []`).
+- `agent.act` fills all five fields in one call; a fresh snapshot shows the same values the page
+  renders.
+- `press` on `Publish post` is refused without `allow`, then succeeds once the in-app dialog is
+  approved, and the published card appears.
+- The approval buttons and the inspector do not appear in `snapshot()`.
+- Reviewed in headless Chrome at 1440px: the form, the filled state, the approval card, the
+  preview dialog, the discard dialog and the published card. Screenshots drove two fixes —
+  dialog centring and the preview close button's focus ring.
 
 **Verify this before anything else.** If `act` cannot drive the form, nothing downstream matters.
 
@@ -516,6 +555,14 @@ latency tuning, reduced-motion, mobile layout.
 Every interface gets the agent test from the SDK docs: assert every entry is named, then `act`
 on every control the feature promises.
 
+The agent tests assert against `agent.snapshot()` rather than the DOM, and they run the real
+bridge (`src/agent/bridge.ts`), so the permission path is exercised too: the test subscribes to
+the confirmation store and answers it like the dialog would.
+
+`jsdom` is pinned to `26.1.0`. jsdom 31 depends on `undici@8`, whose `decompress.js` calls
+`zlib.createZstdDecompress()` at import time; that is missing on Node 22.12, so Vitest failed to
+start any worker. Keep the pin until Node on this machine ships zstd, or move to happy-dom.
+
 ---
 
 ## 14. Risks
@@ -543,8 +590,7 @@ other sites, WebMCP registration, TTS replies, i18n, offline mode.
 
 1. **Decision model provider.** "Jev" is not a provider I could verify — which API and key do
    you have (OpenAI, Groq, OpenRouter, Google, local)? Same for STT when we move past the browser.
-2. **M0 identity.** I recommend the Create Post form (it becomes the real composer). Alternative:
-   a generic profile/signup form with no future. Confirm.
+2. ~~**M0 identity.**~~ Answered: the Create Post form, which becomes the real composer. Built.
 3. **Bun proxy.** OK to add `server/` + `bun run dev` running both? Without it, no LLM key can be
    shipped safely.
 4. **Feed mechanics.** Snap one post per viewport (strong "scroll one post" semantics) or a
@@ -561,5 +607,8 @@ bun add @ui-sdk/react @ui-sdk/core lucide-react
 bun run dev        # vite
 bun run build      # tsc -b && vite build
 bun run lint       # oxlint
-bun run test       # vitest (added in M0)
+bun run test       # vitest run (jsdom)
+bun run test:watch # vitest
 ```
+
+Today `bun run dev` serves the Vite app only; there is no `server/` proxy yet.
