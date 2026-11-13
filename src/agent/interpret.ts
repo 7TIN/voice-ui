@@ -389,7 +389,7 @@ function buildPlanFromIntent(
       ).slice(0, 90)
       if (!text) return { error: "Couldn't build that plan.", hint: hint }
       const fn = setText(TITLE, text, "Setting the title.", "Title set.")
-      return fn(snapshot) as Plan
+      return fn(snapshot)
     }
     case "set_body": {
       const text = spoken(
@@ -397,7 +397,7 @@ function buildPlanFromIntent(
       )
       if (!text) return { error: "Couldn't build that plan.", hint: hint }
       const fn = setText(BODY, text, "Setting the body.", "Body set.")
-      return fn(snapshot) as Plan
+      return fn(snapshot)
     }
     case "set_community": {
       // Try to match a community name from the transcript.
@@ -418,7 +418,12 @@ function buildPlanFromIntent(
       return setComments(false, snapshot)
     case "publish": {
       const component = find(snapshot, PUBLISH)
-      if (!component || component.disabled || !component.actions.includes("press")) return { error: "Couldn't build that plan.", hint: hint }
+      if (!component) {
+        return { error: "There is no post to publish.", hint: "Open the composer first." }
+      }
+      if (component.disabled || !component.actions.includes("press")) {
+        return { error: "The post isn't ready to publish.", hint: "Add a title and a body first." }
+      }
       return {
         transcript: "",
         steps: [{ ref: PUBLISH, action: "press", args: [] }],
@@ -428,7 +433,12 @@ function buildPlanFromIntent(
     }
     case "preview": {
       const component = find(snapshot, PREVIEW)
-      if (!component || component.disabled) return { error: "Couldn't build that plan.", hint: hint }
+      if (!component) {
+        return { error: "There is no preview to open.", hint: "Open the composer first." }
+      }
+      if (component.disabled) {
+        return { error: "There is no preview to open.", hint: "Open the composer first." }
+      }
       return {
         transcript: "",
         steps: [{ ref: PREVIEW, action: "press", args: [] }],
@@ -438,7 +448,8 @@ function buildPlanFromIntent(
     }
     case "clear_title": {
       const component = find(snapshot, TITLE)
-      if (!component || !component.actions.includes("clear")) return { error: "Couldn't build that plan.", hint: hint }
+      if (!component) return { error: "I can't find " + TITLE + " on this page.", hint: hint }
+      if (!component.actions.includes("clear")) return unavailable(TITLE, "clear")
       return {
         transcript: "",
         steps: [{ ref: TITLE, action: "clear", args: [] }],
@@ -448,7 +459,8 @@ function buildPlanFromIntent(
     }
     case "clear_body": {
       const component = find(snapshot, BODY)
-      if (!component || !component.actions.includes("clear")) return { error: "Couldn't build that plan.", hint: hint }
+      if (!component) return { error: "I can't find " + BODY + " on this page.", hint: hint }
+      if (!component.actions.includes("clear")) return unavailable(BODY, "clear")
       return {
         transcript: "",
         steps: [{ ref: BODY, action: "clear", args: [] }],
