@@ -1,32 +1,31 @@
-# React + TypeScript + Vite
+# Voice UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A social feed you can operate by voice, built on [ui-sdk](https://ui-sdk.dev) (`@ui-sdk/*`)
+with React 19, Vite, TypeScript, Tailwind 4, and Bun.
 
-Currently, two official plugins are available:
+The agent does not click pixels or inject JavaScript. It reads the UI's exposed component state
+through the ui-sdk agent bridge, calls validated component actions, and verifies the result.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Status
 
-## React Compiler
+Planning. The first slice is a Create Post form built only from ui-sdk components, used to prove
+agent-to-component control before voice or the feed is built.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the SDK research, architecture,
+component contract, safety model, and milestone plan.
 
-## Expanding the Oxlint configuration
+## Scripts
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+bun install
+bun run dev      # Vite dev server
+bun run build    # typecheck + production build
+bun run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Stack notes
+
+- Packages are `@ui-sdk/react` and `@ui-sdk/core` — there is no `@vercel/ui` on npm.
+- The SDK is unstyled: Tailwind styles parts through `data-slot` and state attributes.
+- shadcn/ui is not used for interactive controls, because its bare `<button>`/`<input>` are
+  invisible to the agent bridge.
