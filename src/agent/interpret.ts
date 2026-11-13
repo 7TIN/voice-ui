@@ -354,9 +354,22 @@ export async function interpret(
   const apiKey = options?.apiKey
   if (apiKey) {
     const decision = await classifyIntent(transcript, apiKey, snapshot.map((c) => c.label + " (" + c.actions.join(", ") + (c.items ? ": " + c.items.map((i) => i.label).join(", ") : "") + ")").join("; "))
-    if (decision && decision.intent !== "unknown" && decision.confidence >= 0.6) {
-      const plan = buildPlanFromIntent(decision.intent, transcript, snapshot)
-      if (isPlan(plan)) return { ...plan, transcript }
+    if (decision) {
+      if (decision.intent !== "unknown" && decision.confidence >= 0.4) {
+        const plan = buildPlanFromIntent(decision.intent, transcript, snapshot)
+        if (isPlan(plan)) return { ...plan, transcript }
+      }
+      // Gemini returned a result but confidence too low or unknown.
+      // Include the Gemini result in the hint for debugging.
+      return {
+        error: "I don't know that one yet.",
+        hint: "Gemini: " + decision.intent + " (" + Math.round(decision.confidence * 100) + "%). " + hint,
+      }
+    }
+    // Gemini call failed (null) — API error or network issue.
+    return {
+      error: "I don't know that one yet.",
+      hint: "Gemini call failed (check API key and network). " + hint,
     }
   }
 
