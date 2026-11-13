@@ -99,7 +99,7 @@ export function ComposePage({
   onOpenInspector,
 }: {
   componentCount: number
-  onOpenInspector: () => void
+  onOpenInspector?: () => void
 }) {
   const [draft, setDraft] = React.useState<Draft>(initialDraft)
   const [published, setPublished] = React.useState<Draft | null>(null)
@@ -469,16 +469,21 @@ export function ComposePage({
               {componentCount} components report their label, state and actions. A model
               can call them without touching the DOM.
             </p>
-            <Button
-              className={buttonClass("secondary", "mt-3 w-full")}
-              onClick={onOpenInspector}
-            >
-              Open agent inspector
-            </Button>
-            <p className="mt-2.5 text-[11px] leading-4 text-zinc-400">
-              Or run <code className="font-mono text-[10px]">window.agent.snapshot()</code>{" "}
-              in the console.
-            </p>
+            {onOpenInspector ? (
+              <>
+                <Button
+                  className={buttonClass("secondary", "mt-3 w-full")}
+                  onClick={onOpenInspector}
+                >
+                  Open agent inspector
+                </Button>
+                <p className="mt-2.5 text-[11px] leading-4 text-zinc-400">
+                  Or run{" "}
+                  <code className="font-mono text-[10px]">window.agent.snapshot()</code> in
+                  the console.
+                </p>
+              </>
+            ) : null}
           </div>
         </div>
       </aside>

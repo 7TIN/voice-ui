@@ -15,6 +15,7 @@ import { CloseIcon, SparkIcon } from "./components/icons"
 export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const components = useAgentSnapshot()
+  const dev = import.meta.env.DEV
 
   return (
     <div className="min-h-dvh">
@@ -44,7 +45,7 @@ export default function App() {
       <main>
         <ComposePage
           componentCount={components.length}
-          onOpenInspector={() => setInspectorOpen(true)}
+          onOpenInspector={dev ? () => setInspectorOpen(true) : undefined}
         />
       </main>
 
@@ -56,7 +57,9 @@ export default function App() {
       </footer>
 
       <ConfirmationDialog />
-      <AgentInspector open={inspectorOpen} onOpenChange={setInspectorOpen} />
+      {dev ? (
+        <AgentInspector open={inspectorOpen} onOpenChange={setInspectorOpen} />
+      ) : null}
 
       <ToastRegion
         data-agent-hidden
