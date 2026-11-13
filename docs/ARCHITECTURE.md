@@ -240,6 +240,10 @@ from the plan above:
   `DialogContent` lands in the top-left corner. `dialogSurfaceClass` in
   `src/components/button-styles.ts` restores centring with `fixed inset-0 m-auto` plus a
   `max-height` and scroll, and all three dialogs use it.
+- The preview and discard dialogs pass `container={document.body}`, so their content renders
+  outside the composer `<form>`. ui-sdk warns about nested forms otherwise, and any field added
+  to a dialog later would silently join the composer's form. Focus, Escape and scroll locking
+  follow the container.
 - Verified in headless Chrome through the bridge itself: fill (5 steps), publish refused, publish
   approved, preview and discard dialogs centred, and the dialog label changing to its title when
   open (use `ref` for a follow-up step).

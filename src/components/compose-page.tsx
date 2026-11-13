@@ -334,7 +334,10 @@ export function ComposePage({
                   Discard draft
                 </AlertDialogTrigger>
                 <AlertDialogBackdrop className={dialogBackdropClass} />
-                <AlertDialogContent className={`${dialogSurfaceClass} w-[min(92vw,420px)]`}>
+                <AlertDialogContent
+                  container={document.body}
+                  className={`${dialogSurfaceClass} w-[min(92vw,420px)]`}
+                >
                   <AlertDialogTitle className="text-[16px] font-semibold tracking-tight text-zinc-900">
                     Discard this draft?
                   </AlertDialogTitle>
@@ -371,7 +374,10 @@ export function ComposePage({
                     Preview post
                   </DialogTrigger>
                   <DialogBackdrop className={dialogBackdropClass} />
-                  <DialogContent className={`${dialogSurfaceClass} w-[min(92vw,560px)]`}>
+                  <DialogContent
+                    container={document.body}
+                    className={`${dialogSurfaceClass} w-[min(92vw,560px)]`}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <DialogTitle className="text-[16px] font-semibold tracking-tight text-zinc-900">
