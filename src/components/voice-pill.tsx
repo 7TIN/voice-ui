@@ -26,9 +26,11 @@ export function VoicePill({
   const [apiKey, setApiKey] = useState<string>(() => {
     if (apiKeyProp) return apiKeyProp
     try {
+      const envKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (envKey) return envKey
       return localStorage.getItem("gemini-api-key") ?? ""
     } catch {
-      return ""
+      return import.meta.env.VITE_GEMINI_API_KEY ?? ""
     }
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
