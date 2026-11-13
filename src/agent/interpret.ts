@@ -1,5 +1,7 @@
+import { classifyIntent, type GeminiIntent } from "./gemini"
 import type { AgentComponent } from "@ui-sdk/react/agent"
 import type { Interpreted, Plan, PlanProblem } from "./plan"
+import { isPlan } from "./plan"
 
 /**
  * M1 speaks a small, explicit grammar. It is not a language model: it is a set
@@ -312,7 +314,7 @@ function setComments(on: boolean, snapshot: AgentComponent[]): Plan | PlanProble
   }
 }
 
-export function interpret(transcript: string, snapshot: AgentComponent[]): Interpreted {
+export function interpretGrammar(transcript: string, snapshot: AgentComponent[]): Interpreted {
   // Speech transcripts often carry filler words and trailing punctuation. Strip
   // the common ones so "um, set the title to hello please" still matches.
   const cleaned = transcript
@@ -337,4 +339,111 @@ export function interpret(transcript: string, snapshot: AgentComponent[]): Inter
   }
 
   return { error: "I don't know that one yet.", hint: hint }
+}
+
+export async function interpret(
+  transcript: string,
+  snapshot: AgentComponent[],
+  options?: { apiKey?: string | null },
+): Promise<Interpreted> {
+  // Fast path: deterministic grammar (instant, free, no network).
+  const grammarResult = interpretGrammar(transcript, snapshot)
+  if (isPlan(grammarResult)) return grammarResult
+
+  // If the grammar didn't match and we have an API key, ask Gemini.
+  const apiKey = options?.apiKey
+  if (apiKey) {
+    const decision = await classifyIntent(transcript, apiKey)
+    if (decision && decision.intent !== "unknown" && decision.confidence >= 0.6) {
+      const plan = buildPlanFromIntent(decision.intent, transcript, snapshot)
+      if (isPlan(plan)) return { ...plan, transcript }
+    }
+  }
+
+  // Fall back to the grammar's "unknown" result.
+  return grammarResult
+}
+
+function buildPlanFromIntent(
+  intent: GeminiIntent,
+  transcript: string,
+  snapshot: AgentComponent[],
+): Interpreted {
+  switch (intent) {
+    case "set_title": {
+      const text = spoken(
+        transcript.replace(/^(?:set|change|rename|make|write|draft)\s+(?:the\s+|my\s+|a\s+)?title\s*/i, ""),
+      ).slice(0, 90)
+      if (!text) return { error: "Couldn't build that plan.", hint: hint }
+      const fn = setText(TITLE, text, "Setting the title.", "Title set.")
+      return fn(snapshot) as Plan
+    }
+    case "set_body": {
+      const text = spoken(
+        transcript.replace(/^(?:set|change|fill(?:\s+in)?|write|replace|draft)\s+(?:the\s+|my\s+|a\s+)?(?:body|post\s+body|post|content)\s*/i, ""),
+      )
+      if (!text) return { error: "Couldn't build that plan.", hint: hint }
+      const fn = setText(BODY, text, "Setting the body.", "Body set.")
+      return fn(snapshot) as Plan
+    }
+    case "set_community": {
+      // Try to match a community name from the transcript.
+      const said = transcript
+        .replace(/^(?:set|change|choose|pick|switch|move|post|put)\s+(?:the\s+|my\s+)?(?:community|it|this)?\s*(?:to|in)?\s*/i, "")
+        .trim()
+      return pickCommunity(said || transcript, snapshot)
+    }
+    case "set_visibility": {
+      const said = transcript
+        .replace(/^(?:set|change|make|switch)\s+(?:the\s+|my\s+)?(?:audience|visibility|who\s+can\s+see\s+(?:this|it))\s*(?:to)?\s*/i, "")
+        .trim()
+      return pickVisibility(said || transcript, snapshot)
+    }
+    case "toggle_comments_on":
+      return setComments(true, snapshot)
+    case "toggle_comments_off":
+      return setComments(false, snapshot)
+    case "publish": {
+      const component = find(snapshot, PUBLISH)
+      if (!component || component.disabled || !component.actions.includes("press")) return { error: "Couldn't build that plan.", hint: hint }
+      return {
+        transcript: "",
+        steps: [{ ref: PUBLISH, action: "press", args: [] }],
+        say: "Publishing.",
+        done: "Published.",
+      }
+    }
+    case "preview": {
+      const component = find(snapshot, PREVIEW)
+      if (!component || component.disabled) return { error: "Couldn't build that plan.", hint: hint }
+      return {
+        transcript: "",
+        steps: [{ ref: PREVIEW, action: "press", args: [] }],
+        say: "Opening the preview.",
+        done: "Preview opened.",
+      }
+    }
+    case "clear_title": {
+      const component = find(snapshot, TITLE)
+      if (!component || !component.actions.includes("clear")) return { error: "Couldn't build that plan.", hint: hint }
+      return {
+        transcript: "",
+        steps: [{ ref: TITLE, action: "clear", args: [] }],
+        say: "Clearing the title.",
+        done: "Title cleared.",
+      }
+    }
+    case "clear_body": {
+      const component = find(snapshot, BODY)
+      if (!component || !component.actions.includes("clear")) return { error: "Couldn't build that plan.", hint: hint }
+      return {
+        transcript: "",
+        steps: [{ ref: BODY, action: "clear", args: [] }],
+        say: "Clearing the body.",
+        done: "Body cleared.",
+      }
+    }
+    default:
+      return { error: "Couldn't build that plan.", hint: hint }
+  }
 }

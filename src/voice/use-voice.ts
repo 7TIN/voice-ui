@@ -72,7 +72,7 @@ function mapError(code: string) {
   )
 }
 
-export function useVoice(transcriber?: Transcriber): Voice {
+export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voice {
   const speech = useMemo(
     () => transcriber ?? createWebSpeechTranscriber(),
     [transcriber],
@@ -87,6 +87,8 @@ export function useVoice(transcriber?: Transcriber): Voice {
   /** True from `start` until a result arrives, so late events cannot clobber a new run. */
   const listening = useRef(false)
   const runId = useRef(0)
+  const apiKeyRef = useRef(apiKey ?? null)
+  apiKeyRef.current = apiKey ?? apiKeyRef.current
 
   const run = useCallback(async (raw: string) => {
     const text = raw.trim()
@@ -100,7 +102,7 @@ export function useVoice(transcriber?: Transcriber): Voice {
     setStatus("Working out what to do…")
 
     const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
-    const interpreted = interpret(text, snapshot)
+    const interpreted = await interpret(text, snapshot, { apiKey: apiKeyRef.current })
 
     if (!isPlan(interpreted)) {
       if (id !== runId.current) return

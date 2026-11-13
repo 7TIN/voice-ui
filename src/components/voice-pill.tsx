@@ -14,8 +14,25 @@ const BUSY = new Set(["transcribing", "planning", "executing"])
  * that drives the agent. Everything here funnels into the same `interpret` →
  * `executePlan` pipeline, so a typed command is not a second implementation.
  */
-export function VoicePill({ transcriber }: { transcriber?: Transcriber }) {
-  const voice = useVoice(transcriber)
+export function VoicePill({
+  transcriber,
+  apiKey: apiKeyProp,
+  onApiKeyChange,
+}: {
+  transcriber?: Transcriber
+  apiKey?: string | null
+  onApiKeyChange?: (key: string) => void
+}) {
+  const [apiKey, setApiKey] = useState<string>(() => {
+    if (apiKeyProp) return apiKeyProp
+    try {
+      return localStorage.getItem("gemini-api-key") ?? ""
+    } catch {
+      return ""
+    }
+  })
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const voice = useVoice(transcriber, apiKey || null)
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
 
@@ -131,7 +148,36 @@ export function VoicePill({ transcriber }: { transcriber?: Transcriber }) {
         >
           Type
         </Button>
+        <Button
+          type="button"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((current) => !current)}
+          className={buttonClass("ghost", "h-8 shrink-0 px-2 text-[12px]")}
+        >
+          Key
+        </Button>
       </div>
+
+      {settingsOpen ? (
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2">
+          <Input
+            aria-label="Gemini API key"
+            value={apiKey}
+            onValueChange={(value) => {
+              setApiKey(value)
+              try {
+                localStorage.setItem("gemini-api-key", value)
+              } catch {
+                // ignore
+              }
+              onApiKeyChange?.(value)
+            }}
+            placeholder="Paste Gemini API key (optional)"
+            autoComplete="off"
+            className={`${inputClass} h-9 text-[13px]`}
+          />
+        </div>
+      ) : null}
     </section>
   )
 }

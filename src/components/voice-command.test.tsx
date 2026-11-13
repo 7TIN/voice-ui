@@ -145,7 +145,7 @@ test("the grammar maps words to the page's own labels and values", async () => {
   ]
 
   for (const [said, ref, action, arg] of cases) {
-    const result = interpret(said, visibleSnapshot())
+    const result = await interpret(said, visibleSnapshot())
     expect(isPlan(result), `${said} should be understood`).toBe(true)
     if (!isPlan(result)) continue
     expect(result.steps, said).toEqual([
@@ -155,13 +155,13 @@ test("the grammar maps words to the page's own labels and values", async () => {
     ])
   }
 
-  const clearing = interpret("clear the title", visibleSnapshot())
+  const clearing = await interpret("clear the title", visibleSnapshot())
   expect(isPlan(clearing) && clearing.steps[0].action).toBe("clear")
 
-  const unknown = interpret("make me a sandwich", visibleSnapshot())
+  const unknown = await interpret("make me a sandwich", visibleSnapshot())
   expect(isPlan(unknown)).toBe(false)
 
-  const empty = interpret("publish the post", visibleSnapshot())
+  const empty = await interpret("publish the post", visibleSnapshot())
   expect(isPlan(empty)).toBe(false)
   if (!isPlan(empty)) expect(empty.hint).toContain("title")
 })
