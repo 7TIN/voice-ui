@@ -251,14 +251,26 @@ const rules: Rule[] = [
     },
   },
   {
-    pattern: /^(?:preview|show|open)\s+(?:me\s+)?(?:the\s+)?(?:post|preview|it)$/,
-    build: (_match, snapshot) => {
-      const component = find(snapshot, PREVIEW)
-      if (!component || component.disabled) {
-        return { error: "There is no preview to open.", hint: "Open the composer first." }
-      }
-      return { transcript: "", steps: [{ ref: PREVIEW, action: "press", args: [] }], say: "Opening the preview.", done: "Preview opened." }
+    pattern: /^title\s*(?:is|:|=)?\s*(.+)$/,
+    build: (match, snapshot) => {
+      const text = spoken(match[1]).slice(0, 90)
+      return text
+        ? setText(TITLE, text, "Setting the title.", "Title set.")(snapshot)
+        : { error: "There was no title in that.", hint: hint }
     },
+  },
+  {
+    pattern: /^(?:body|post\s+body)\s*(?:is|:|=)?\s*(.+)$/,
+    build: (match, snapshot) => {
+      const text = spoken(match[1])
+      return text
+        ? setText(BODY, text, "Setting the body.", "Body set.")(snapshot)
+        : { error: "There was no body text in that.", hint: hint }
+    },
+  },
+  {
+    pattern: /^comments?\s+(on|off)$/,
+    build: (match, snapshot) => setComments(match[1].toLowerCase() === "on", snapshot),
   },
 ]
 
