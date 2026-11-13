@@ -11,6 +11,7 @@ import { AgentInspector } from "./components/agent-inspector"
 import { ComposePage } from "./components/compose-page"
 import { ConfirmationDialog } from "./components/confirmation-dialog"
 import { CloseIcon, SparkIcon } from "./components/icons"
+import { VoicePill } from "./components/voice-pill"
 
 export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
@@ -18,7 +19,7 @@ export default function App() {
   const dev = import.meta.env.DEV
 
   return (
-    <div className="min-h-dvh">
+    <div className="min-h-dvh pb-32">
       <header className="sticky top-0 z-30 border-b border-zinc-200/70 bg-[#fafafa]/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-5 sm:px-8">
           <span className="grid size-7 place-items-center rounded-[9px] bg-zinc-900 text-white shadow-sm">
@@ -31,7 +32,7 @@ export default function App() {
             Beta
           </span>
           <span className="ml-auto hidden text-[12px] text-zinc-400 sm:inline">
-            Local demo · nothing leaves this tab
+            Local demo · posts stay in this tab
           </span>
           <div
             aria-hidden="true"
@@ -61,9 +62,11 @@ export default function App() {
         <AgentInspector open={inspectorOpen} onOpenChange={setInspectorOpen} />
       ) : null}
 
+      <VoicePill />
+
       <ToastRegion
         data-agent-hidden
-        className="fixed bottom-4 left-1/2 z-[55] flex w-[min(92vw,380px)] -translate-x-1/2 flex-col gap-2"
+        className="fixed bottom-36 left-1/2 z-[55] flex w-[min(92vw,380px)] -translate-x-1/2 flex-col gap-2"
       >
         {() => (
           <Toast className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-white shadow-[0_16px_40px_-16px_rgba(9,9,11,0.5)]">

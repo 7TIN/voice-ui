@@ -8,13 +8,13 @@ through the ui-sdk agent bridge, calls validated component actions, and verifies
 
 ## Status
 
-M0 is built: a Create Post form from ui-sdk components only, a single agent bridge with a
-human-approval gate for publishing, and a dev-only inspector that runs bridge actions. Voice and
-the feed are not started.
+M1 is built: a Create Post form from ui-sdk components, a single agent bridge with a
+human-approval gate for publishing, and a voice panel (Web Speech adapter + typed fallback)
+that drives the same bridge. The feed is not started.
 
 ```bash
 bun install
-bun run dev      # http://localhost:5173, then window.agent.snapshot() in the console
+bun run dev      # http://localhost:5173, then say or type a command in the pill
 ```
 
 ## Scripts

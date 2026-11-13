@@ -54,6 +54,36 @@ export function CloseIcon({ className }: IconProps) {
   )
 }
 
+export function MicIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={className}>
+      <rect
+        x="5.5"
+        y="1.5"
+        width="5"
+        height="8"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+export function StopIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={className}>
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function BoltIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={className}>

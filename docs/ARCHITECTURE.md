@@ -3,7 +3,7 @@
 A social feed you can operate with your voice, built on Vercel's [ui-sdk](https://ui-sdk.dev)
 (`@ui-sdk/*`), React 19 + Vite + TypeScript, with Bun as the toolchain.
 
-Status: **M0 built and verified (2026-11-13). M1 (voice) not started.**
+Status: **M0 and M1 built and verified (2026-11-14). M2 (feed) not started.**
 Last researched: ui-sdk `0.1.0-beta.1` (public beta, APIs may change).
 
 ---
@@ -484,7 +484,8 @@ match, it returns `ask` with the candidates.
 - Type: one sans (Geist/Inter), 14px base, 13px metadata, tight heading scale.
 - Borders: 1px `zinc-200`; one shadow only for popups.
 - Motion: 150ms ease for state, 200ms for popups; respect `prefers-reduced-motion`.
-- Mic: fixed bottom-center pill. Idle = outline, listening = pulsing ring + timer,
+- Mic: fixed bottom-right pill on wide screens so it never covers the composer's Publish action,
+  centred on narrow screens. Idle = outline, listening = pulsing ring + timer,
   planning/executing = spinner + verb ("Thinking…", "Opening comments…"), error = amber.
 - Live transcript: interim text in lighter weight, final text in normal weight.
 - Command log: each command expands to its steps with ✓/✗ and the model's `say` line.
@@ -495,8 +496,8 @@ match, it returns `ask` with the candidates.
 - Accessibility: the voice panel is a labelled region, status updates are `aria-live="polite"`,
   and the typed fallback is fully keyboard reachable.
 
-The M0 page implements the palette, type, borders and motion above; the sidebar, right rail, mic
-pill, transcript and command log arrive with M1–M3.
+The M0 page and the M1 voice pill implement the palette, type, borders and motion above; the
+sidebar, right rail, feed, and command log arrive with M2–M4.
 
 
 ---
@@ -524,10 +525,35 @@ Verified:
 
 **Verify this before anything else.** If `act` cannot drive the form, nothing downstream matters.
 
-### M1 — Voice on the form
+### M1 — Voice on the form — **done**
 
-Web Speech adapter, mic pill, live transcript, status states, typed fallback, one successful
-command end to end ("write a title about my new AI project" → title filled → verified).
+Web Speech adapter (`src/voice/transcriber.ts`), a `useVoice` state machine, a compact mic pill
+with a typed fallback, a deterministic rule interpreter (`src/agent/interpret.ts`), an executor
+with a pre-check and a post-verify (`src/agent/execute.ts`), and the pill's integration in
+`App.tsx`.
+
+- The pill is `data-agent-hidden`: an agent can read and drive the composer, but it must never
+  drive the thing that drives the agent. The typed box is a disclosure ("Type") so the pill
+  stays compact and the composer's Publish button is not covered.
+- The adapter is the only Web Speech code: `createWebSpeechTranscriber({ Ctor })` accepts an
+  injectable constructor, so a provider stream can replace it without touching the pipeline.
+- `interpret` returns a `Plan` shaped like a model's output; the hook, executor and verifier
+  do not change when the interpreter does. Case-preserving via `new RegExp(source, "i")`.
+- `executePlan` re-reads the snapshot, checks every step, runs `agent.act`, then polls the
+  snapshot for up to 500 ms — `ok: true` from the bridge is not enough, a change callback can
+  still have cancelled a step.
+- The mic pill's error mapping covers `not-allowed`, `no-speech`, `audio-capture`, `network`,
+  `aborted`, `unsupported` and a failing `start()`.
+
+Verified: `bun run lint`, `bun run test` (13 tests), `bun run build` all green; headless Chrome
+drove the typed path end to end — unknown command → error, "set the title to …" → "Title set."
+with the snapshot matching, body, comments off, publish → approval → "Published." with the
+published card. The mic click in headless returns "Microphone access is blocked.", mapped from
+`not-allowed`. Zero console warnings. The pill's controls (`Start listening`, `Type`, `Command`,
+`Run`) do not appear in `agent.snapshot()`.
+
+Status text and hints are kept short so they fit the 320 px pill on wide screens. Voice uses
+the browser's speech service, so the header no longer claims nothing leaves the tab.
 
 ### M2 — Feed and posts
 
