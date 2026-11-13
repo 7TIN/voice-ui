@@ -353,7 +353,7 @@ export async function interpret(
   // If the grammar didn't match and we have an API key, ask Gemini.
   const apiKey = options?.apiKey
   if (apiKey) {
-    const decision = await classifyIntent(transcript, apiKey)
+    const decision = await classifyIntent(transcript, apiKey, snapshot.map((c) => c.label + " (" + c.actions.join(", ") + (c.items ? ": " + c.items.map((i) => i.label).join(", ") : "") + ")").join("; "))
     if (decision && decision.intent !== "unknown" && decision.confidence >= 0.6) {
       const plan = buildPlanFromIntent(decision.intent, transcript, snapshot)
       if (isPlan(plan)) return { ...plan, transcript }
