@@ -16,8 +16,8 @@ const PUBLISH = "Publish post"
 const PREVIEW = "Preview post"
 
 const hint =
-  "Try “set the title to …”, “turn comments off”, “preview the post”, " +
-  "or “publish the post”."
+  "Try \"set the title to ...\", \"turn comments off\", " +
+  "\"preview the post\", or \"publish the post\"."
 
 type Rule = {
   pattern: RegExp
@@ -45,8 +45,9 @@ function itemKey(value: string) {
 function spoken(value: string) {
   return value
     .trim()
-    .replace(/^["'“”‘’]/, "")
-    .replace(/["'“”‘’]$/, "")
+    .replace(/^["'""`]/g, "")
+    .replace(/["'""`']$/g, "")
+    .replace(/^(?:to|as|about|saying|is)\s+/i, "")
     .replace(/[.,;!?]+$/, "")
     .trim()
 }
@@ -59,17 +60,17 @@ function find(snapshot: AgentComponent[], label: string) {
 
 function unavailable(label: string, action: string): PlanProblem {
   return {
-    error: `“${label}” can't be used right now.`,
-    hint: `It may be disabled, or the page may have changed. It should offer “${action}”.`,
+    error: label + " can't be used right now.",
+    hint: "It may be disabled, or the page may have changed. It should offer " + action + ".",
   }
 }
 
 function noItems(label: string, said: string, items: AgentComponent["items"]): PlanProblem {
   const labels = (items ?? []).map((item) => item.label)
   return {
-    error: `“${said}” isn't one of the choices for ${label.toLowerCase()}.`,
+    error: said + " isn't one of the choices for " + label.toLowerCase() + ".",
     hint: labels.length
-      ? `Try ${labels.map((value) => `“${value}”`).join(", ")}.`
+      ? "Try " + labels.map((value) => "\"" + value + "\"").join(", ") + "."
       : "Open the control to see its choices.",
   }
 }
@@ -90,7 +91,7 @@ function setText(
   return (snapshot) => {
     const component = find(snapshot, label)
     if (!component) {
-      return { error: `I can't find “${label}” on this page.`, hint }
+      return { error: "I can't find " + label + " on this page.", hint: hint }
     }
     if (!component.actions.includes("setValue")) {
       return unavailable(label, "setValue")
@@ -98,8 +99,8 @@ function setText(
     return {
       transcript: "",
       steps: [{ ref: label, action: "setValue", args: [text] }],
-      say,
-      done,
+      say: say,
+      done: done,
     }
   }
 }
@@ -111,7 +112,7 @@ const rules: Rule[] = [
       const text = spoken(match[1]).slice(0, 90)
       return text
         ? setText(TITLE, text, "Setting the title.", "Title set.")(snapshot)
-        : { error: "There was no title in that.", hint }
+        : { error: "There was no title in that.", hint: hint }
     },
   },
   {
@@ -120,7 +121,7 @@ const rules: Rule[] = [
       const text = spoken(match[1]).slice(0, 90)
       return text
         ? setText(TITLE, text, "Setting the title.", "Title set.")(snapshot)
-        : { error: "There was no title in that.", hint }
+        : { error: "There was no title in that.", hint: hint }
     },
   },
   {
@@ -129,7 +130,7 @@ const rules: Rule[] = [
       const text = spoken(match[1]).slice(0, 90)
       return text
         ? setText(TITLE, text, "Setting the title.", "Title set.")(snapshot)
-        : { error: "There was no title in that.", hint }
+        : { error: "There was no title in that.", hint: hint }
     },
   },
   {
@@ -139,7 +140,7 @@ const rules: Rule[] = [
       const text = spoken(match[1])
       return text
         ? setText(BODY, text, "Setting the body.", "Body set.")(snapshot)
-        : { error: "There was no body text in that.", hint }
+        : { error: "There was no body text in that.", hint: hint }
     },
   },
   {
@@ -148,7 +149,7 @@ const rules: Rule[] = [
       const text = spoken(match[1])
       return text
         ? setText(BODY, text, "Setting the body.", "Body set.")(snapshot)
-        : { error: "There was no body text in that.", hint }
+        : { error: "There was no body text in that.", hint: hint }
     },
   },
   {
@@ -179,13 +180,13 @@ const rules: Rule[] = [
     build: (match, snapshot) => {
       const label = /body/i.test(match[0]) ? BODY : TITLE
       const component = find(snapshot, label)
-      if (!component) return { error: `I can't find “${label}” on this page.`, hint }
+      if (!component) return { error: "I can't find " + label + " on this page.", hint: hint }
       if (!component.actions.includes("clear")) return unavailable(label, "clear")
       return {
         transcript: "",
         steps: [{ ref: label, action: "clear", args: [] }],
-        say: `Clearing the ${/body/i.test(match[0]) ? "body" : "title"}.`,
-        done: `${/body/i.test(match[0]) ? "Body" : "Title"} cleared.`,
+        say: "Clearing the " + (/body/i.test(match[0]) ? "body" : "title") + ".",
+        done: (/body/i.test(match[0]) ? "Body" : "Title") + " cleared.",
       }
     },
   },
@@ -194,23 +195,12 @@ const rules: Rule[] = [
     build: (_match, snapshot) => {
       const component = find(snapshot, PUBLISH)
       if (!component) {
-        return {
-          error: "There is no post to publish.",
-          hint: "Open the composer first.",
-        }
+        return { error: "There is no post to publish.", hint: "Open the composer first." }
       }
       if (component.disabled || !component.actions.includes("press")) {
-        return {
-          error: "The post isn't ready to publish.",
-          hint: "Add a title and a body first.",
-        }
+        return { error: "The post isn't ready to publish.", hint: "Add a title and a body first." }
       }
-      return {
-        transcript: "",
-        steps: [{ ref: PUBLISH, action: "press", args: [] }],
-        say: "Publishing.",
-        done: "Published.",
-      }
+      return { transcript: "", steps: [{ ref: PUBLISH, action: "press", args: [] }], say: "Publishing.", done: "Published." }
     },
   },
   {
@@ -220,58 +210,110 @@ const rules: Rule[] = [
       if (!component || component.disabled) {
         return { error: "There is no preview to open.", hint: "Open the composer first." }
       }
-      return {
-        transcript: "",
-        steps: [{ ref: PREVIEW, action: "press", args: [] }],
-        say: "Opening the preview.",
-        done: "Preview opened.",
+      return { transcript: "", steps: [{ ref: PREVIEW, action: "press", args: [] }], say: "Opening the preview.", done: "Preview opened." }
+    },
+  },
+  // Looser variants: speech transcripts rarely match the strict grammar exactly.
+  {
+    pattern: /^(?:set|change|rename|make|write|draft)\s+(?:the\s+|my\s+|a\s+)?title\s+(.+)$/,
+    build: (match, snapshot) => {
+      const text = spoken(match[1]).slice(0, 90)
+      return text
+        ? setText(TITLE, text, "Setting the title.", "Title set.")(snapshot)
+        : { error: "There was no title in that.", hint: hint }
+    },
+  },
+  {
+    pattern:
+      /^(?:set|change|fill(?:\s+in)?|write|replace|draft)\s+(?:the\s+|my\s+|a\s+)?(?:body|post\s+body|post|content)\s+(.+)$/,
+    build: (match, snapshot) => {
+      const text = spoken(match[1])
+      return text
+        ? setText(BODY, text, "Setting the body.", "Body set.")(snapshot)
+        : { error: "There was no body text in that.", hint: hint }
+    },
+  },
+  {
+    pattern: /^(?:turn|switch|set)\s+(on|off)\s+comments?$/,
+    build: (match, snapshot) => setComments(match[1].toLowerCase() === "on", snapshot),
+  },
+  {
+    pattern: /^(?:publish|post|submit|send)\s*(?:the\s+|this\s+|my\s+)?(?:post|draft|it)?$/,
+    build: (_match, snapshot) => {
+      const component = find(snapshot, PUBLISH)
+      if (!component) {
+        return { error: "There is no post to publish.", hint: "Open the composer first." }
       }
+      if (component.disabled || !component.actions.includes("press")) {
+        return { error: "The post isn't ready to publish.", hint: "Add a title and a body first." }
+      }
+      return { transcript: "", steps: [{ ref: PUBLISH, action: "press", args: [] }], say: "Publishing.", done: "Published." }
+    },
+  },
+  {
+    pattern: /^(?:preview|show|open)\s+(?:me\s+)?(?:the\s+)?(?:post|preview|it)$/,
+    build: (_match, snapshot) => {
+      const component = find(snapshot, PREVIEW)
+      if (!component || component.disabled) {
+        return { error: "There is no preview to open.", hint: "Open the composer first." }
+      }
+      return { transcript: "", steps: [{ ref: PREVIEW, action: "press", args: [] }], say: "Opening the preview.", done: "Preview opened." }
     },
   },
 ]
 
 function pickCommunity(said: string, snapshot: AgentComponent[]): Plan | PlanProblem {
   const component = find(snapshot, COMMUNITY)
-  if (!component) return { error: `I can't find “${COMMUNITY}” on this page.`, hint }
+  if (!component) return { error: "I can't find " + COMMUNITY + " on this page.", hint: hint }
   const item = matchItem(component, said)
   if (!item) return noItems(COMMUNITY, said, component.items)
   return {
     transcript: "",
     steps: [{ ref: COMMUNITY, action: "setValue", args: [item.value] }],
-    say: `Switching to ${item.label}.`,
-    done: `Community set to ${item.label}.`,
+    say: "Switching to " + item.label + ".",
+    done: "Community set to " + item.label + ".",
   }
 }
 
 function pickVisibility(said: string, snapshot: AgentComponent[]): Plan | PlanProblem {
   const component = find(snapshot, VISIBILITY)
-  if (!component) return { error: `I can't find “${VISIBILITY}” on this page.`, hint }
+  if (!component) return { error: "I can't find " + VISIBILITY + " on this page.", hint: hint }
   const item = matchItem(component, said)
   if (!item) return noItems(VISIBILITY, said, component.items)
   return {
     transcript: "",
     steps: [{ ref: VISIBILITY, action: "setValue", args: [item.value] }],
-    say: `Setting the audience to ${item.label}.`,
-    done: `Audience set to ${item.label}.`,
+    say: "Setting the audience to " + item.label + ".",
+    done: "Audience set to " + item.label + ".",
   }
 }
 
 function setComments(on: boolean, snapshot: AgentComponent[]): Plan | PlanProblem {
   const component = find(snapshot, COMMENTS)
-  if (!component) return { error: `I can't find “${COMMENTS}” on this page.`, hint }
+  if (!component) return { error: "I can't find " + COMMENTS + " on this page.", hint: hint }
   if (!component.actions.includes("setChecked")) return unavailable(COMMENTS, "setChecked")
   return {
     transcript: "",
     steps: [{ ref: COMMENTS, action: "setChecked", args: [on] }],
-    say: `Turning comments ${on ? "on" : "off"}.`,
-    done: `Comments are ${on ? "on" : "off"}.`,
+    say: "Turning comments " + (on ? "on" : "off") + ".",
+    done: "Comments are " + (on ? "on" : "off") + ".",
   }
 }
 
 export function interpret(transcript: string, snapshot: AgentComponent[]): Interpreted {
-  const text = transcript.trim().replace(/\s+/g, " ")
+  // Speech transcripts often carry filler words and trailing punctuation. Strip
+  // the common ones so "um, set the title to hello please" still matches.
+  const cleaned = transcript
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/^(?:um|uh|so|well|okay|ok|hey|hi|please|murmur)\s*,?\s*/i, "")
+    .replace(/\s*,?\s*(?:please|thanks|thank you|now)\s*[.!?]*$/i, "")
+    .replace(/[.!?]+$/, "")
+    .trim()
+
+  const text = cleaned
   if (!text) {
-    return { error: "I didn't catch that.", hint: "Try again, or type the command below." }
+    return { error: "I didn't catch that.", hint: "Try again, or type the command." }
   }
 
   for (const rule of rules) {
@@ -279,8 +321,8 @@ export function interpret(transcript: string, snapshot: AgentComponent[]): Inter
     const match = text.match(new RegExp(rule.pattern.source, "i"))
     if (!match) continue
     const plan = rule.build(match, snapshot)
-    return "steps" in plan ? { ...plan, transcript } : plan
+    return "steps" in plan ? { ...plan, transcript: transcript } : plan
   }
 
-  return { error: "I don't know that one yet.", hint }
+  return { error: "I don't know that one yet.", hint: hint }
 }

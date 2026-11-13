@@ -116,6 +116,9 @@ export function VoicePill({ transcriber }: { transcriber?: Transcriber }) {
                 : voice.transcript
                   ? `“${voice.transcript}”`
                   : "Try “turn comments off” or “publish the post”.")}
+            {voice.hint && voice.transcript
+              ? ` I heard: “${voice.transcript}”.`
+              : null}
           </p>
         </div>
 
