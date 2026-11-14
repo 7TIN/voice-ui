@@ -53,6 +53,31 @@ function resolvePerson(text: string) {
   return null
 }
 
+function resolveSubmit(snapshot: AgentComponent[], text: string): string | null {
+  const textareas = snapshot.filter(
+    (component) =>
+      !component.offPage &&
+      component.component === "textarea" &&
+      /^Your (?:reply|quote) to /.test(component.label ?? ""),
+  )
+  const isQuoteHint = /quote/i.test(text)
+  let candidates = textareas
+  if (isQuoteHint) {
+    candidates = textareas.filter((component) => /quote/i.test(component.label ?? ""))
+  } else {
+    candidates = textareas.filter((component) => /reply/i.test(component.label ?? ""))
+  }
+  if (!candidates.length) candidates = textareas
+  const active =
+    candidates.find((component) => component.value && String(component.value).trim()) ??
+    candidates[0] ??
+    textareas[0]
+  if (!active?.label) return null
+  const author = active.label.replace(/^Your (?:reply|quote) to /, "")
+  const isQuote = /quote/i.test(active.label)
+  return isQuote ? "Post quote of " + author : "Post reply to " + author
+}
+
 function resolveSection(text: string): string | null {
   const key = text.toLowerCase()
   for (const section of TIMELINE_SECTIONS) {
@@ -171,7 +196,6 @@ const rules = [
       const request: DictationRequest = {
         dictate: field,
         prompt: 'Listening for your reply to ' + author + '. Say it, then "done".',
-        steps: [{ ref: postLabel(author, "reply"), action: "press", args: [] }],
       }
       return request
     },
@@ -314,6 +338,14 @@ const rules = [
     },
   },
   {
+    pattern: /^(?:post|submit|send|publish)\s+(?:this|it|the\s+(?:reply|quote|message))?$/,
+    build: (_match: RegExpMatchArray, snapshot: AgentComponent[]) => {
+      const button = resolveSubmit(snapshot, _match.input ?? "")
+      if (!button) return null
+      return simplePlan(button, "press", [], "Posting.", "Posted.")
+    },
+  },
+  {
     pattern: /^(?:back|go\s+back|all\s+examples|examples)$/,
     build: () => {
       return simplePlan("Back to examples", "press", [], "Going back.", "Back.")
@@ -435,6 +467,12 @@ const criteria: { intent: string; criteria: string }[] = [
       "Examples: 'new post', 'compose', 'write a post'.",
   },
   {
+    intent: "post_submit",
+    criteria:
+      "The speaker wants to post the reply or quote they just typed or dictated. " +
+      "Examples: 'post this reply', 'post this', 'submit this', 'send it', 'publish this message'.",
+  },
+  {
     intent: "back_to_gallery",
     criteria:
       "The speaker wants to leave the example and return to the gallery. " +
@@ -496,7 +534,7 @@ export const timelineVoice: ExampleVoice = {
       "The utterance is chit-chat, a question about the app itself, page content read aloud, " +
       "a list of unrelated words, or has no identifiable action on the timeline.",
   },
-  buildPlan(intent, transcript, _snapshot) {
+  buildPlan(intent, transcript, snapshot) {
     const author = resolvePost(transcript) ?? POST_AUTHORS[0]!
     const person = personFromText(transcript) ?? SUGGESTED_PEOPLE[0]!
     const section = sectionFromText(transcript)
@@ -572,6 +610,11 @@ export const timelineVoice: ExampleVoice = {
         return simplePlan("Sections", "setValue", [section ?? "home"], "Switching sections.", "Section changed.")
       case "new_post":
         return simplePlan("New post", "press", [], "Opening the composer.", "Opened.")
+      case "post_submit": {
+        const button = resolveSubmit(snapshot, transcript)
+        if (!button) return { error: "Nothing to post.", hint }
+        return simplePlan(button, "press", [], "Posting.", "Posted.")
+      }
       case "back_to_gallery":
         return simplePlan("Back to examples", "press", [], "Going back.", "Back.")
       default:

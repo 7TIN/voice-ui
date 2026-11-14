@@ -2,15 +2,6 @@ import * as React from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@ui-sdk/react/avatar"
 import { Button } from "@ui-sdk/react/button"
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@ui-sdk/react/collapsible"
-import {
-  Dialog,
-  DialogBackdrop,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "@ui-sdk/react/dialog"
 import { Input } from "@ui-sdk/react/input"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@ui-sdk/react/menu"
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs"
@@ -19,7 +10,7 @@ import { Timeline, TimelineConnector, TimelineDescription, TimelineItem, Timelin
 import { Toggle, ToggleIcon } from "@ui-sdk/react/toggle"
 import { toast } from "@ui-sdk/react/toast"
 import { createTimelineController } from "@ui-sdk/react/timeline"
-import { buttonClass, dialogBackdropClass, dialogSurfaceClass, inputClass } from "../../components/button-styles"
+import { buttonClass, inputClass } from "../../components/button-styles"
 import {
   SUGGESTED_PEOPLE,
   TIMELINE_POSTS,
@@ -112,6 +103,9 @@ export function TimelinePage() {
   })
   const [section, setSection] = React.useState<string>("home")
   const [focusIndex, setFocusIndex] = React.useState(0)
+  const [replyTexts, setReplyTexts] = React.useState<Record<string, string>>({})
+  const [quoteTexts, setQuoteTexts] = React.useState<Record<string, string>>({})
+  const [quoting, setQuoting] = React.useState<Record<string, boolean>>({})
   const controller = React.useMemo(() => createTimelineController(), [])
 
   function updatePost(id: string, patch: Partial<TimelinePost>) {
@@ -270,6 +264,43 @@ export function TimelinePage() {
                         · {post.time}
                       </TimelineTime>
                     </div>
+                    {quoting[post.id] ? (
+                      <div className="mt-3 flex gap-2">
+                        <Textarea
+                          aria-label={"Your quote of " + post.author}
+                          value={quoteTexts[post.id] ?? ""}
+                          onValueChange={(value) =>
+                            setQuoteTexts((current) => ({
+                              ...current,
+                              [post.id]: value,
+                            }))
+                          }
+                          rows={2}
+                          placeholder="Add your thoughts…"
+                          className="min-h-16 flex-1 resize-y rounded-lg border border-zinc-200 bg-white px-3.5 py-2 text-[14px] leading-6 text-zinc-900 shadow-[0_1px_1px_rgba(16,24,40,0.03)] outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/[0.04]"
+                        />
+                        <Button
+                          data-agent-confirm={
+                            "Posts a public quote of " + post.author
+                          }
+                          className={buttonClass("primary", "h-auto self-end")}
+                          onClick={() => {
+                            toast("Quote posted", { description: post.author })
+                            setQuoting((current) => ({
+                              ...current,
+                              [post.id]: false,
+                            }))
+                            setQuoteTexts((current) => ({
+                              ...current,
+                              [post.id]: "",
+                            }))
+                          }}
+                        >
+                          {"Post quote of " + post.author}
+                        </Button>
+                      </div>
+                    ) : null}
+
                     <TimelineDescription className="mt-1 whitespace-pre-wrap text-[15px] leading-6 text-zinc-800">
                       {post.body}
                     </TimelineDescription>
@@ -289,56 +320,14 @@ export function TimelinePage() {
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center gap-1">
-                      <Dialog>
-                      <DialogTrigger
+                      <Button
                         aria-label={"Reply to " + post.author + "'s post"}
                         className={buttonClass("ghost", "h-8 gap-1.5 px-2 text-[13px] text-zinc-500")}
+                        onClick={() => {}}
                       >
                         <MessageIcon className="size-4" />
                         <span>{post.replies}</span>
-                      </DialogTrigger>
-                          <DialogBackdrop className={dialogBackdropClass} />
-                          <DialogContent
-                            container={document.body}
-                            className={`${dialogSurfaceClass} w-[min(92vw,480px)]`}
-                          >
-                            <DialogTitle className="text-[16px] font-semibold tracking-tight text-zinc-900">
-                              {"Reply to " + post.author}
-                            </DialogTitle>
-                            <DialogDescription className="mt-1 text-[13px] text-zinc-500">
-                              Your reply will be visible to everyone who can see this post.
-                            </DialogDescription>
-                            <Textarea
-                              aria-label={"Your reply to " + post.author}
-                              placeholder="Write your reply…"
-                              rows={4}
-                              className="mt-4 min-h-24 w-full resize-y rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-[15px] leading-7 text-zinc-900 shadow-[0_1px_1px_rgba(16,24,40,0.03)] outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/[0.04]"
-                            />
-                            <div className="mt-4 flex justify-end gap-2">
-                              <DialogClose className={buttonClass("secondary")}>
-                                Cancel
-                              </DialogClose>
-                              <Button
-                                data-agent-confirm={
-                                  "Posts a public reply to " + post.author
-                                }
-                                className={buttonClass("primary")}
-                                onClick={(event) => {
-                                  const dialog = (event.currentTarget as HTMLElement).closest(
-                                    "[role='dialog']",
-                                  )
-                                  const textarea = dialog?.querySelector(
-                                    "textarea",
-                                  ) as HTMLTextAreaElement | null
-                                  addComment(post.id, textarea?.value ?? "")
-                                  if (textarea) textarea.value = ""
-                                }}
-                              >
-                                {"Post reply to " + post.author}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                      </Button>
 
                       <Toggle
                         aria-label={"Repost " + post.author + "'s post"}
@@ -364,48 +353,18 @@ export function TimelinePage() {
                         <span aria-hidden="true">{post.likes}</span>
                       </Toggle>
 
-                      <Dialog>
-                        <DialogTrigger
-                          aria-label={"Quote " + post.author + "'s post"}
-                          className={buttonClass("ghost", "h-8 gap-1.5 px-2 text-[13px] text-zinc-500")}
-                        >
-                          <QuoteIcon className="size-4" />
-                        </DialogTrigger>
-                          <DialogBackdrop className={dialogBackdropClass} />
-                          <DialogContent
-                            container={document.body}
-                            className={`${dialogSurfaceClass} w-[min(92vw,480px)]`}
-                          >
-                            <DialogTitle className="text-[16px] font-semibold tracking-tight text-zinc-900">
-                              {"Quote " + post.author}
-                            </DialogTitle>
-                            <DialogDescription className="mt-1 text-[13px] text-zinc-500">
-                              Add your thoughts above their post.
-                            </DialogDescription>
-                            <Textarea
-                              aria-label={"Your quote of " + post.author}
-                              placeholder="What do you think?"
-                              rows={4}
-                              className="mt-4 min-h-24 w-full resize-y rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-[15px] leading-7 text-zinc-900 shadow-[0_1px_1px_rgba(16,24,40,0.03)] outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/[0.04]"
-                            />
-                            <div className="mt-4 flex justify-end gap-2">
-                              <DialogClose className={buttonClass("secondary")}>
-                                Cancel
-                              </DialogClose>
-                              <Button
-                                data-agent-confirm={
-                                  "Posts a public quote of " + post.author
-                                }
-                                className={buttonClass("primary")}
-                                onClick={() => {
-                                  toast("Quote posted", { description: post.author })
-                                }}
-                              >
-                                {"Post quote of " + post.author}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                      <Button
+                        aria-label={"Quote " + post.author + "'s post"}
+                        className={buttonClass("ghost", "h-8 gap-1.5 px-2 text-[13px] text-zinc-500")}
+                        onClick={() =>
+                          setQuoting((current) => ({
+                            ...current,
+                            [post.id]: !current[post.id],
+                          }))
+                        }
+                      >
+                        <QuoteIcon className="size-4" />
+                      </Button>
 
                       <Button
                         aria-label={"Share " + post.author + "'s post"}
@@ -503,6 +462,37 @@ export function TimelinePage() {
                         )}
                       </CollapsiblePanel>
                     </Collapsible>
+
+                    <div className="mt-3 flex gap-2">
+                      <Textarea
+                        aria-label={"Your reply to " + post.author}
+                        value={replyTexts[post.id] ?? ""}
+                        onValueChange={(value) =>
+                          setReplyTexts((current) => ({
+                            ...current,
+                            [post.id]: value,
+                          }))
+                        }
+                        rows={2}
+                        placeholder="Write a reply…"
+                        className="min-h-16 flex-1 resize-y rounded-lg border border-zinc-200 bg-white px-3.5 py-2 text-[14px] leading-6 text-zinc-900 shadow-[0_1px_1px_rgba(16,24,40,0.03)] outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 focus:ring-4 focus:ring-zinc-900/[0.04]"
+                      />
+                      <Button
+                        data-agent-confirm={
+                          "Posts a public reply to " + post.author
+                        }
+                        className={buttonClass("primary", "h-auto self-end")}
+                        onClick={() => {
+                          addComment(post.id, replyTexts[post.id] ?? "")
+                          setReplyTexts((current) => ({
+                            ...current,
+                            [post.id]: "",
+                          }))
+                        }}
+                      >
+                        {"Post reply to " + post.author}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </TimelineItem>
