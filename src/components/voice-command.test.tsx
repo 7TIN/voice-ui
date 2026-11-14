@@ -10,7 +10,8 @@ import {
   type Recognition,
   type RecognitionCtor,
 } from "../voice/transcriber"
-import { ComposePage } from "./compose-page"
+import { ComposePage } from "../examples/compose/compose-page"
+import { composeVoice } from "../examples/compose/voice"
 import { VoicePill } from "./voice-pill"
 
 async function settle() {
@@ -23,7 +24,7 @@ function renderPage(transcriber?: Parameters<typeof VoicePill>[0]["transcriber"]
   return render(
     <>
       <ComposePage componentCount={0} />
-      <VoicePill transcriber={transcriber} />
+      <VoicePill voice={composeVoice} transcriber={transcriber} />
     </>,
   )
 }
@@ -171,7 +172,7 @@ test("the grammar maps words to the page's own labels and values", async () => {
   ]
 
   for (const [said, ref, action, arg] of cases) {
-    const result = await interpret(said, visibleSnapshot())
+    const result = await interpret(said, visibleSnapshot(), composeVoice)
     expect(isPlan(result), `${said} should be understood`).toBe(true)
     if (!isPlan(result)) continue
     expect(result.steps, said).toEqual([
@@ -181,13 +182,13 @@ test("the grammar maps words to the page's own labels and values", async () => {
     ])
   }
 
-  const clearing = await interpret("clear the title", visibleSnapshot())
+  const clearing = await interpret("clear the title", visibleSnapshot(), composeVoice)
   expect(isPlan(clearing) && clearing.steps[0].action).toBe("clear")
 
-  const unknown = await interpret("make me a sandwich", visibleSnapshot())
+  const unknown = await interpret("make me a sandwich", visibleSnapshot(), composeVoice)
   expect(isPlan(unknown)).toBe(false)
 
-  const empty = await interpret("publish the post", visibleSnapshot())
+  const empty = await interpret("publish the post", visibleSnapshot(), composeVoice)
   expect(isPlan(empty)).toBe(false)
   if (!isPlan(empty) && !isDictation(empty)) expect(empty.hint).toContain("title")
 })
@@ -204,9 +205,10 @@ test("naming a field without content starts dictation instead of failing", async
   ]
 
   for (const [said, target] of primers) {
-    const result = await interpret(said, visibleSnapshot())
+    const result = await interpret(said, visibleSnapshot(), composeVoice)
     expect(isDictation(result), said).toBe(true)
-    if (isDictation(result)) expect(result.dictate).toBe(target)
+    if (isDictation(result))
+      expect(result.dictate).toBe(target === "title" ? "Post title" : "Post body")
   }
 })
 
@@ -217,6 +219,7 @@ test("two commands in one breath become one ordered plan", async () => {
   const result = await interpret(
     "open the community menu and change to product",
     visibleSnapshot(),
+    composeVoice,
   )
 
   expect(isPlan(result)).toBe(true)

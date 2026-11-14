@@ -6,17 +6,34 @@ import {
   ToastRegion,
   ToastTitle,
 } from "@ui-sdk/react/toast"
+import { Button } from "@ui-sdk/react/button"
 import { useAgentSnapshot } from "./agent/use-agent-snapshot"
 import { AgentInspector } from "./components/agent-inspector"
-import { ComposePage } from "./components/compose-page"
 import { ConfirmationDialog } from "./components/confirmation-dialog"
+import { buttonClass } from "./components/button-styles"
 import { CloseIcon, SparkIcon } from "./components/icons"
 import { VoicePill } from "./components/voice-pill"
+import { GalleryPage } from "./examples/gallery"
+import { ComposePage } from "./examples/compose/compose-page"
+import { TimelinePage } from "./examples/timeline/timeline-page"
+import { composeVoice } from "./examples/compose/voice"
+import { galleryVoice } from "./examples/gallery/voice"
+import { timelineVoice } from "./examples/timeline/voice"
+
+type ExampleId = "gallery" | "compose" | "timeline"
 
 export default function App() {
+  const [page, setPage] = useState<ExampleId>("gallery")
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const components = useAgentSnapshot()
   const dev = import.meta.env.DEV
+
+  const voice =
+    page === "timeline"
+      ? timelineVoice
+      : page === "compose"
+        ? composeVoice
+        : galleryVoice
 
   return (
     <div className="min-h-dvh pb-32">
@@ -29,8 +46,17 @@ export default function App() {
             Murmur
           </span>
           <span className="ml-1 hidden rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-500 sm:inline">
-            Beta
+            Examples
           </span>
+          {page !== "gallery" ? (
+            <Button
+              aria-label="Back to examples"
+              onClick={() => setPage("gallery")}
+              className={buttonClass("ghost", "h-8 px-2 text-[12px]")}
+            >
+              ← Examples
+            </Button>
+          ) : null}
           <span className="ml-auto hidden text-[12px] text-zinc-400 sm:inline">
             Local demo · posts stay in this tab
           </span>
@@ -44,10 +70,16 @@ export default function App() {
       </header>
 
       <main>
-        <ComposePage
-          componentCount={components.length}
-          onOpenInspector={dev ? () => setInspectorOpen(true) : undefined}
-        />
+        {page === "gallery" ? (
+          <GalleryPage onSelect={(id) => setPage(id)} />
+        ) : page === "compose" ? (
+          <ComposePage
+            componentCount={components.length}
+            onOpenInspector={dev ? () => setInspectorOpen(true) : undefined}
+          />
+        ) : (
+          <TimelinePage />
+        )}
       </main>
 
       <footer className="border-t border-zinc-200/70">
@@ -62,7 +94,7 @@ export default function App() {
         <AgentInspector open={inspectorOpen} onOpenChange={setInspectorOpen} />
       ) : null}
 
-      <VoicePill />
+      <VoicePill key={page} voice={voice} />
 
       <ToastRegion
         data-agent-hidden

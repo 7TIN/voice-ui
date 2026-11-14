@@ -38,8 +38,8 @@ import {
   fieldDescriptionClass,
   fieldLabelClass,
   inputClass,
-} from "./button-styles"
-import { CheckIcon, ChevronDownIcon, CloseIcon } from "./icons"
+} from "../../components/button-styles"
+import { CheckIcon, ChevronDownIcon, CloseIcon } from "../../components/icons"
 
 const communities = [
   { value: "ai", label: "AI & ML" },

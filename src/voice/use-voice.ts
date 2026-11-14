@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { agent } from "../agent/bridge"
 import { executePlan } from "../agent/execute"
-import { contentPlan, interpret } from "../agent/interpret"
+import type { ExampleVoice } from "../examples/types"
+import { interpret } from "../agent/interpret"
 import { isDictation, isPlan } from "../agent/plan"
 import { createWebSpeechTranscriber, type Transcriber } from "./transcriber"
 
@@ -14,7 +15,10 @@ export type VoicePhase =
   | "done"
   | "error"
 
-export type DictationTarget = "title" | "body"
+export type DictationTarget = string
+
+/** The voice contract for the example currently on screen. */
+export type VoiceSpec = ExampleVoice
 
 export type Voice = {
   phase: VoicePhase
@@ -79,27 +83,15 @@ function mapError(code: string) {
   )
 }
 
-function promptFor(target: DictationTarget) {
-  return target === "title"
-    ? 'Listening for the title. Say it, then "done".'
-    : 'Listening for the body. Say it, then "done".'
-}
-
-function nounFor(target: DictationTarget) {
-  return target === "title" ? "title" : "body"
-}
-
-/** The waiting prompt for a dictation turn, matching how it is being filled. */
-function promptForSource(source: "voice" | "typed", target: DictationTarget) {
-  if (source === "voice") return promptFor(target)
-  return "Adding to the " + nounFor(target) + '. Type "done" when you finish.'
-}
-
 const FINISH_EXACT = /^(?:done|finish|finished|that'?s it|thats it|end|stop|i'?m done)$/i
 const FINISH_TAIL = /^(.*?)[,.!?]\s*(?:done|finish(?:ed)?|that'?s it)\.?$/i
 const CANCEL = /^(?:cancel|never\s*mind|nevermind|discard|forget\s+it|start\s+over)$/i
 
-export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voice {
+export function useVoice(
+  voice: ExampleVoice,
+  transcriber?: Transcriber,
+  apiKey?: string | null,
+): Voice {
   const speech = useMemo(
     () => transcriber ?? createWebSpeechTranscriber(),
     [transcriber],
@@ -149,16 +141,19 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
     }, RESTART_MS)
   }, [clearRestart, speech])
 
-  const writeContent = useCallback(async (target: DictationTarget, text: string) => {
-    const result = await executePlan(contentPlan(target, text))
-    if (!result.ok) {
-      setPhase("error")
-      setStatus(result.message)
-      setHint('Say "cancel" to discard, or keep going.')
-      return false
-    }
-    return true
-  }, [])
+  const writeContent = useCallback(
+    async (target: DictationTarget, text: string) => {
+      const result = await executePlan(voice.dictation.contentPlan(target, text))
+      if (!result.ok) {
+        setPhase("error")
+        setStatus(result.message)
+        setHint('Say "cancel" to discard, or keep going.')
+        return false
+      }
+      return true
+    },
+    [voice],
+  )
 
   const finishDictation = useCallback(async () => {
     const current = dictationRef.current
@@ -174,18 +169,18 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
     }
 
     setPhase("executing")
-    setStatus("Saving the " + nounFor(current.target) + "…")
+    setStatus("Saving the " + voice.dictation.noun(current.target) + "…")
     const written = await writeContent(current.target, current.text)
     if (!written) return
 
     setPhase("done")
     setStatus(
-      (current.target === "title" ? "Title" : "Body") +
+      voice.dictation.label(current.target) +
         " set." +
         (active.current ? " I'm still listening if you want to say more." : ""),
     )
     setHint(null)
-  }, [writeContent])
+  }, [writeContent, voice])
 
   const cancelDictation = useCallback(() => {
     dictationRef.current = null
@@ -226,11 +221,11 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
       // Everything except an explicit finish/cancel is content, never a command.
       current.text = current.text ? current.text + " " + text : text
       await writeContent(current.target, current.text)
-      setStatus(promptForSource(current.source, current.target))
+      setStatus(voice.dictation.prompt(current.target, current.source))
       setHint("“" + current.text + "” — say \"done\" when you finish.")
       setTranscript("")
     },
-    [cancelDictation, finishDictation, writeContent],
+    [cancelDictation, finishDictation, writeContent, voice],
   )
 
   const runCommand = useCallback(
@@ -246,11 +241,26 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
       setStatus("Working out what to do…")
 
       const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
-      const interpreted = await interpret(text, snapshot, { apiKey: apiKeyRef.current })
+      const interpreted = await interpret(text, snapshot, voice, { apiKey: apiKeyRef.current })
 
       if (id !== runId.current) return
 
       if (isDictation(interpreted)) {
+        if (interpreted.steps?.length) {
+          const prep = await executePlan({
+            transcript: "",
+            steps: interpreted.steps,
+            say: "Opening…",
+            done: "",
+          })
+          if (id !== runId.current) return
+          if (!prep.ok) {
+            setPhase("error")
+            setStatus(prep.message)
+            setHint("Try again, or type it.")
+            return
+          }
+        }
         dictationRef.current = {
           target: interpreted.dictate,
           text: "",
@@ -263,14 +273,14 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
           source === "voice" && speech.supported
             ? interpreted.prompt
             : 'Type the ' +
-                nounFor(interpreted.dictate) +
+                voice.dictation.noun(interpreted.dictate) +
                 ' in the command box, then type "done".',
         )
         setHint(
           source === "voice" && speech.supported
             ? "Speak naturally. Pauses are fine; the words are kept until you say \"done\"."
             : "The next line you type is the " +
-                nounFor(interpreted.dictate) +
+                voice.dictation.noun(interpreted.dictate) +
                 '. Type "done" on its own to finish.',
         )
         if (source === "voice" && !active.current) {
@@ -306,7 +316,7 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
       setStatus(result.message)
       setHint(null)
     },
-    [speech],
+    [speech, voice],
   )
 
   const enqueue = useCallback(
@@ -397,7 +407,7 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
         setPhase("listening")
         setStatus(
           dictationRef.current
-            ? promptForSource(dictationRef.current.source, dictationRef.current.target)
+            ? voice.dictation.prompt(dictationRef.current.target, dictationRef.current.source)
             : "Listening — say what you want.",
         )
       } else {
@@ -432,11 +442,11 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
     }
     setStatus(
       dictationRef.current
-        ? promptFor(dictationRef.current.target)
+        ? voice.dictation.prompt(dictationRef.current.target, "voice")
         : "Listening — say what you want.",
     )
     speech.start()
-  }, [speech])
+  }, [speech, voice])
 
   const stop = useCallback(() => {
     active.current = false

@@ -30,9 +30,12 @@ export type PlanProblem = {
  * command, and they may span several pauses.
  */
 export type DictationRequest = {
-  dictate: "title" | "body"
+  /** The label of the ui-sdk control the content is written into. */
+  dictate: string
   /** What to show while the microphone waits for the content. */
   prompt: string
+  /** Steps that reveal the field first, such as opening a reply dialog. */
+  steps?: PlanStep[]
 }
 
 export type Interpreted = Plan | PlanProblem | DictationRequest

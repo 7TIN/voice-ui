@@ -50,6 +50,7 @@ function expectedKey(action: string) {
   if (action === "setValue") return "value" as const
   if (action === "setChecked") return "checked" as const
   if (action === "setOpen") return "open" as const
+  if (action === "setPressed") return "pressed" as const
   return null
 }
 
@@ -94,7 +95,13 @@ async function verify(plan: Plan, refs: string[]) {
 export async function executePlan(plan: Plan): Promise<CommandResult> {
   const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
 
+  // A step may name a component that only appears after an earlier step, for
+  // example the fields of a dialog that opens on the first step. Only check
+  // the ones that are already on the page; the bridge will report a clear error
+  // for anything that is genuinely missing.
   for (const step of plan.steps) {
+    const component = find(snapshot, step.ref)
+    if (!component) continue
     const problem = check(step, snapshot)
     if (problem) return { ok: false, message: problem, changes: [] }
   }

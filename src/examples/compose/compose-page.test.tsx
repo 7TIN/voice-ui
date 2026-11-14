@@ -1,12 +1,12 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, expect, test } from "vitest"
 import type { AgentComponent } from "@ui-sdk/react/agent"
-import { agent } from "../agent/bridge"
+import { agent } from "../../agent/bridge"
 import {
   getConfirmation,
   resolveConfirmation,
   subscribeConfirmation,
-} from "../agent/confirmation"
+} from "../../agent/confirmation"
 import { ComposePage } from "./compose-page"
 
 let approve = false

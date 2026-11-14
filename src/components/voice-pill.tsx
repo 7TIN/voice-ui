@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Button } from "@ui-sdk/react/button"
 import { Input } from "@ui-sdk/react/input"
 import type { Transcriber } from "../voice/transcriber"
+import type { ExampleVoice } from "../examples/types"
 import { useVoice } from "../voice/use-voice"
 import { buttonClass, inputClass } from "./button-styles"
 import { MicIcon, StopIcon } from "./icons"
@@ -15,10 +16,12 @@ const BUSY = new Set(["transcribing", "planning", "executing"])
  * `executePlan` pipeline, so a typed command is not a second implementation.
  */
 export function VoicePill({
+  voice: voiceSpec,
   transcriber,
   apiKey: apiKeyProp,
   onApiKeyChange,
 }: {
+  voice: ExampleVoice
   transcriber?: Transcriber
   apiKey?: string | null
   onApiKeyChange?: (key: string) => void
@@ -34,7 +37,7 @@ export function VoicePill({
     }
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const voice = useVoice(transcriber, apiKey || null)
+  const voice = useVoice(voiceSpec, transcriber, apiKey || null)
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
 
@@ -144,7 +147,7 @@ export function VoicePill({
                 ? "Speak normally. Press the square to stop."
                 : voice.transcript
                   ? `“${voice.transcript}”`
-                  : "Try “turn comments off” or “publish the post”.")}
+                  : voiceSpec.suggestions.map((item) => "“" + item + "”").join(" · "))}
             {voice.hint && voice.transcript
               ? ` I heard: “${voice.transcript}”.`
               : null}
