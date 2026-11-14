@@ -29,6 +29,8 @@ export type Voice = {
   dictation: DictationTarget | null
   /** Live words from the recognizer, before they are final. */
   interim: string
+  /** Most recent words spoken, including the latest finalized segment. */
+  liveTranscript: string
   /** The last command, whether it was spoken or typed. */
   transcript: string
   status: string
@@ -42,6 +44,7 @@ export const IDLE_STATUS = "Say or type a command."
 
 const DONE_RESET_MS = 5_000
 const RESTART_MS = 250
+const NETWORK_RETRY_DELAYS = [1_000, 2_000, 4_000, 8_000, 15_000] as const
 
 const ERRORS: Record<string, { status: string; hint: string }> = {
   "not-allowed": {
@@ -139,6 +142,7 @@ export function useVoice(
   const [live, setLive] = useState(false)
   const [dictation, setDictation] = useState<DictationTarget | null>(null)
   const [interim, setInterim] = useState("")
+  const [liveTranscript, setLiveTranscript] = useState("")
   const [transcript, setTranscript] = useState("")
   const [status, setStatus] = useState(IDLE_STATUS)
   const [hint, setHint] = useState<string | null>(null)
@@ -154,6 +158,7 @@ export function useVoice(
   } | null>(null)
   const runId = useRef(0)
   const apiKeyRef = useRef(apiKey ?? null)
+  const finalizedSpeech = useRef("")
 
   useEffect(() => {
     if (apiKey) apiKeyRef.current = apiKey
@@ -162,6 +167,7 @@ export function useVoice(
   /** Commands are serialized so a long dictation cannot interleave with a plan. */
   const chain = useRef<Promise<void>>(Promise.resolve())
   const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const networkRetryCount = useRef(0)
 
   const clearRestart = useCallback(() => {
     if (restartTimer.current) {
@@ -170,13 +176,13 @@ export function useVoice(
     }
   }, [])
 
-  const keepListening = useCallback(() => {
+  const keepListening = useCallback((delay = RESTART_MS) => {
     clearRestart()
     if (!active.current) return
     restartTimer.current = setTimeout(() => {
       restartTimer.current = null
       if (active.current) speech.start()
-    }, RESTART_MS)
+    }, delay)
   }, [clearRestart, speech])
 
   const writeContent = useCallback(
@@ -240,6 +246,35 @@ export function useVoice(
       if (!text) return
 
       const source = current.source
+      const timelineComposer =
+        voice.id === "timeline" &&
+        (current.target.startsWith("Your reply") || current.target.startsWith("Your quote"))
+      const composerKind = current.target.startsWith("Your quote") ? "quote" : "reply"
+      const commandText = text.replace(/[.!?,;:]+/g, " ").replace(/\s+/g, " ").trim()
+      const composerCommand = commandText
+        .split(/\s+(?=(?:close|hide|dismiss|cancel|discard)\b)/i)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .map((part) => ({
+          text: part,
+          close: /^(?:close|hide|dismiss)(?:\s+(?:(?:the|this|that|my)\s+)?(?:reply|replay|comment|quote|post|draft|composer|box)(?:\s+(?:box|composer|draft))?|\s+(?:this|that|it))?$/i.test(part),
+          cancel: /^(?:cancel|discard)(?:\s+(?:(?:the|this|that|my)\s+)?(?:reply|replay|comment|quote|post|draft|composer|box)(?:\s+(?:box|composer|draft))?|\s+(?:this|that|it))?$/i.test(part),
+        }))
+        .filter((part) => part.close || part.cancel)
+        .at(-1)
+      if (timelineComposer && composerCommand) {
+        cancelDictation()
+        const commandKind = /\bquote\b/i.test(composerCommand.text)
+          ? "quote"
+          : /\b(?:reply|replay|comment)\b/i.test(composerCommand.text)
+            ? "reply"
+            : composerKind
+        await runCommandRef.current?.(
+          (composerCommand.cancel ? "cancel " : "close ") + commandKind,
+          source,
+        )
+        return
+      }
 
       const tail = text.match(FINISH_TAIL)
       if (FINISH_EXACT.test(text)) {
@@ -399,15 +434,34 @@ export function useVoice(
           listening.current = true
           active.current = true
           setLive(true)
+          setHint(null)
+          setStatus((current) =>
+            current === "Speech connection lost. Reconnecting…"
+              ? dictationRef.current
+                ? voice.dictation.prompt(dictationRef.current.target, dictationRef.current.source)
+                : "Listening — say what you want."
+              : current,
+          )
           break
 
         case "interim":
-          if (listening.current) setInterim(event.text)
+          if (listening.current) {
+            networkRetryCount.current = 0
+            setInterim(event.text)
+            setLiveTranscript(
+              [finalizedSpeech.current, event.text].filter(Boolean).join(" "),
+            )
+          }
           break
 
         case "final":
           listening.current = false
+          networkRetryCount.current = 0
           setInterim("")
+          finalizedSpeech.current = [finalizedSpeech.current, event.text]
+            .filter(Boolean)
+            .join(" ")
+          setLiveTranscript(finalizedSpeech.current)
           if (!dictationRef.current) {
             setPhase("transcribing")
             setStatus("Heard you.")
@@ -423,6 +477,19 @@ export function useVoice(
           // Silence is normal in a persistent session: restart quietly.
           if (event.code === "no-speech" && active.current) break
 
+          if (event.code === "network" && active.current) {
+            networkRetryCount.current = Math.min(
+              networkRetryCount.current + 1,
+              NETWORK_RETRY_DELAYS.length,
+            )
+            const mapped = mapError(event.code)
+            setLive(true)
+            setPhase("listening")
+            setStatus("Speech connection lost. Reconnecting…")
+            setHint(mapped.hint)
+            break
+          }
+
           active.current = false
           setLive(false)
           const mapped = mapError(event.code)
@@ -437,7 +504,10 @@ export function useVoice(
           if (active.current) {
             // Chrome ends a continuous session after long silence. Keep the
             // microphone available for the next command or dictation chunk.
-            keepListening()
+            const retryDelay = networkRetryCount.current
+              ? NETWORK_RETRY_DELAYS[networkRetryCount.current - 1]!
+              : RESTART_MS
+            keepListening(retryDelay)
             break
           }
           setPhase((current) => (current === "listening" ? "idle" : current))
@@ -489,8 +559,11 @@ export function useVoice(
 
     runId.current += 1
     active.current = true
+    networkRetryCount.current = 0
     setLive(true)
     setInterim("")
+    finalizedSpeech.current = ""
+    setLiveTranscript("")
     setTranscript("")
     setHint(null)
     setPhase("listening")
@@ -508,6 +581,7 @@ export function useVoice(
 
   const stop = useCallback(() => {
     active.current = false
+    networkRetryCount.current = 0
     setLive(false)
     clearRestart()
     dictationRef.current = null
@@ -542,6 +616,7 @@ export function useVoice(
     live,
     dictation,
     interim,
+    liveTranscript,
     transcript,
     status,
     hint,

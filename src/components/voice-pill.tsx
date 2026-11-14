@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Button } from "@ui-sdk/react/button"
 import { Input } from "@ui-sdk/react/input"
 import type { Transcriber } from "../voice/transcriber"
@@ -8,6 +8,7 @@ import { buttonClass, inputClass } from "./button-styles"
 import { MicIcon, StopIcon } from "./icons"
 
 const BUSY = new Set(["transcribing", "planning", "executing"])
+type TranscriptWord = { id: number; text: string; delay: number }
 
 /**
  * The human input path for voice, and therefore hidden from the bridge: an
@@ -44,6 +45,70 @@ export function VoicePill({
   const listening = voice.live
   const busy = BUSY.has(voice.phase)
   const dictating = voice.dictation !== null
+  const spokenLine = listening ? voice.liveTranscript : ""
+  const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[]>([])
+  const transcriptWordId = useRef(0)
+  const transcriptTrack = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const nextWords = spokenLine.trim().split(/\s+/).filter(Boolean)
+    setTranscriptWords((current) => {
+      let shared = 0
+      while (shared < current.length && current[shared]?.text === nextWords[shared]) {
+        shared += 1
+      }
+
+      const updated = current.slice(0, shared)
+      for (let index = shared; index < nextWords.length; index += 1) {
+        updated.push({
+          id: ++transcriptWordId.current,
+          text: nextWords[index]!,
+          delay: Math.min(index - shared, 8) * 45,
+        })
+      }
+      return updated
+    })
+  }, [spokenLine])
+
+  useLayoutEffect(() => {
+    const track = transcriptTrack.current
+    const viewport = track?.parentElement
+    if (!track || !viewport) return
+    const offset = Math.max(0, track.scrollWidth - viewport.clientWidth)
+    track.style.transform = `translateX(-${offset}px)`
+  }, [transcriptWords])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.key.toLowerCase() !== "m" ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        busy
+      ) {
+        return
+      }
+
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [role='textbox']"))
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      if (listening) voice.stop()
+      else voice.start()
+    }
+
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [busy, listening, voice.start, voice.stop])
 
   function submitText(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -84,6 +149,38 @@ export function VoicePill({
         </form>
       ) : null}
 
+      {listening && spokenLine ? (
+        <div
+          role="status"
+          aria-label="Live transcript"
+          className="mb-2 h-7 w-full min-w-0 overflow-hidden px-1 text-[13px] leading-6 text-zinc-600"
+        >
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            {spokenLine}
+          </span>
+          <div
+            aria-hidden="true"
+            className="h-full overflow-hidden whitespace-nowrap"
+          >
+            <div
+              ref={transcriptTrack}
+              className="voice-transcript-track flex h-full w-max min-w-full items-center gap-1 whitespace-nowrap"
+            >
+              {transcriptWords.map((word) => (
+                <span
+                  key={word.id}
+                  data-transcript-word={word.text}
+                  className="voice-transcript-word voice-transcript-word-enter"
+                  style={{ animationDelay: `${word.delay}ms` }}
+                >
+                  {word.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white/95 py-2.5 pl-2.5 pr-2 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_18px_50px_-28px_rgba(16,24,40,0.45)] backdrop-blur">
         <span className="relative grid size-11 shrink-0 place-items-center">
           {listening ? (
@@ -102,6 +199,8 @@ export function VoicePill({
                   : "Start listening"
             }
             aria-pressed={listening}
+            aria-keyshortcuts="M"
+            title="Press M to start or stop the microphone"
             disabled={busy}
             onClick={() => (listening ? voice.stop() : voice.start())}
             className={`relative grid size-11 place-items-center rounded-full text-white outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-900/20 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 ${
@@ -123,6 +222,9 @@ export function VoicePill({
               <MicIcon className="size-[18px]" />
             )}
           </Button>
+          <kbd className="absolute -right-1 -top-1 z-10 grid size-4 place-items-center rounded bg-white text-[9px] font-semibold leading-none text-zinc-500 shadow-sm ring-1 ring-zinc-200">
+            M
+          </kbd>
         </span>
 
         <div className="min-w-0 flex-1">
@@ -134,9 +236,6 @@ export function VoicePill({
             }`}
           >
             {voice.status}
-            {listening && voice.interim ? (
-              <span className="font-normal text-zinc-400"> {voice.interim}</span>
-            ) : null}
           </p>
           <p
             title={voice.hint ?? undefined}

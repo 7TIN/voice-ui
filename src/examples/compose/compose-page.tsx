@@ -103,6 +103,7 @@ export function ComposePage({
 }) {
   const [draft, setDraft] = React.useState<Draft>(initialDraft)
   const [published, setPublished] = React.useState<Draft | null>(null)
+  const [communityOpen, setCommunityOpen] = React.useState(false)
   const hintId = React.useId()
 
   const canPublish = draft.title.trim().length > 0 && draft.body.trim().length > 0
@@ -247,8 +248,13 @@ export function ComposePage({
                     name="community"
                     items={communities}
                     value={draft.community}
+                    open={communityOpen}
+                    onOpenChange={setCommunityOpen}
                     onValueChange={(value) => {
-                      if (typeof value === "string") update({ community: value })
+                      if (typeof value === "string") {
+                        update({ community: value })
+                        setCommunityOpen(false)
+                      }
                     }}
                   >
                     <SelectTrigger className={selectTriggerClass}>

@@ -1,11 +1,20 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { expect, test } from "vitest"
 import type { AgentComponent } from "@ui-sdk/react/agent"
+import { ToastRegion } from "@ui-sdk/react/toast"
 import { agent } from "../../agent/bridge"
+import { interpret } from "../../agent/interpret"
+import { isPlan } from "../../agent/plan"
 import { ComposePage } from "./compose-page"
+import { composeVoice } from "./voice"
 
 function renderPage() {
-  return render(<ComposePage componentCount={0} onOpenInspector={() => {}} />)
+  return render(
+    <>
+      <ComposePage componentCount={0} onOpenInspector={() => {}} />
+      <ToastRegion data-agent-hidden />
+    </>,
+  )
 }
 
 async function settle() {
@@ -106,4 +115,33 @@ test("an agent fills the form and publishes without a popup", async () => {
     expect(screen.getByText("Your post is live")).toBeTruthy()
   })
   expect(screen.getByText("A quieter web")).toBeTruthy()
+})
+
+test("choosing a community closes its list and voice can close it directly", async () => {
+  renderPage()
+  await settle()
+
+  fireEvent.click(screen.getByRole("combobox", { name: "Community" }))
+  fireEvent.click(await screen.findByRole("option", { name: "Design" }))
+
+  await waitFor(() => {
+    expect(find("Community").value).toBe("design")
+    expect(find("Community").open).toBe(false)
+  })
+
+  const opened = await agent.act({
+    steps: [{ ref: "Community", action: "setOpen", args: [true] }],
+  })
+  expect(opened.ok, opened.error?.message).toBe(true)
+
+  const result = await interpret("close community options", agent.snapshot(), composeVoice)
+  expect(isPlan(result)).toBe(true)
+  if (!isPlan(result)) return
+  expect(result.steps).toEqual([
+    { ref: "Community", action: "setOpen", args: [false] },
+  ])
+
+  const closed = await agent.act({ steps: result.steps })
+  expect(closed.ok, closed.error?.message).toBe(true)
+  expect(find("Community").open).toBe(false)
 })

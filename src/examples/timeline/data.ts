@@ -18,7 +18,6 @@ export type TimelinePost = {
   likes: number
   reposted: boolean
   reposts: number
-  replies: number
   comments: TimelineComment[]
   quoted?: { author: string; handle: string; body: string }
 }
@@ -37,7 +36,6 @@ export const TIMELINE_POSTS: TimelinePost[] = [
     likes: 128,
     reposted: false,
     reposts: 34,
-    replies: 12,
     comments: [
       {
         id: "c1",
@@ -75,7 +73,6 @@ export const TIMELINE_POSTS: TimelinePost[] = [
     likes: 412,
     reposted: false,
     reposts: 97,
-    replies: 31,
     comments: [
       {
         id: "c3",
@@ -100,7 +97,6 @@ export const TIMELINE_POSTS: TimelinePost[] = [
     likes: 64,
     reposted: true,
     reposts: 11,
-    replies: 4,
     comments: [],
   },
   {
@@ -116,7 +112,6 @@ export const TIMELINE_POSTS: TimelinePost[] = [
     likes: 203,
     reposted: false,
     reposts: 48,
-    replies: 9,
     comments: [],
   },
 ]

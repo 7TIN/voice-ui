@@ -255,6 +255,38 @@ export function openChoice(
   }
 }
 
+export function closeChoice(
+  label: string,
+  snapshot: AgentComponent[],
+  noun: string,
+  hint: string,
+): Plan | PlanProblem {
+  const component = find(snapshot, label)
+  if (!component) return missing(label, hint)
+
+  if (!component.actions.includes("setOpen")) {
+    return unavailable(label, "setOpen")
+  }
+
+  if (component.open !== true) {
+    return {
+      transcript: "",
+      steps: [],
+      say: "The " + noun + " menu is already closed.",
+      done: "The " + noun + " menu is closed.",
+    }
+  }
+
+  return {
+    transcript: "",
+    steps: [
+      { ref: component.label ?? component.ref, action: "setOpen", args: [false] },
+    ],
+    say: "Closing the " + noun + " menu.",
+    done: "The " + noun + " menu is closed.",
+  }
+}
+
 export function cleanTranscript(transcript: string) {
   return transcript
     .trim()

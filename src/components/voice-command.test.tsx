@@ -75,19 +75,62 @@ function fakeRecognition() {
   }
 }
 
-function heard(text: string) {
+function heard(text: string, isFinal = true) {
   return {
     resultIndex: 0,
     results: {
       length: 1,
       0: {
-        isFinal: true,
+        isFinal,
         length: 1,
         0: { transcript: text },
       },
     },
   } as never
 }
+
+test("M toggles the mic and each new transcript word animates while earlier words stay put", async () => {
+  const { instances, transcriber } = fakeRecognition()
+  renderPage(transcriber)
+  await settle()
+
+  fireEvent.click(screen.getByRole("button", { name: "Type" }))
+  const commandInput = await screen.findByLabelText("Command")
+  fireEvent.keyDown(commandInput, { key: "m" })
+  expect(screen.getByRole("button", { name: "Start listening" })).toBeTruthy()
+
+  fireEvent.keyDown(document, { key: "m" })
+  expect(instances[0]?.started).toBe(true)
+  act(() => instances[0]?.onstart?.())
+
+  act(() => instances[0]?.onresult?.(heard("show", false)))
+  const transcript = await screen.findByRole("status", { name: "Live transcript" })
+  await waitFor(() => {
+    expect(transcript.querySelector('[data-transcript-word="show"]')).toBeTruthy()
+  })
+  const firstWord = transcript.querySelector('[data-transcript-word="show"]')
+
+  act(() => instances[0]?.onresult?.(heard("show further", false)))
+  await waitFor(() => {
+    expect(transcript.querySelector('[data-transcript-word="show"]')).toBe(firstWord)
+    expect(transcript.querySelector('[data-transcript-word="further"]')?.className).toContain(
+      "voice-transcript-word-enter",
+    )
+  })
+
+  const secondWord = transcript.querySelector('[data-transcript-word="further"]')
+  act(() => instances[0]?.onresult?.(heard("show further more", false)))
+  await waitFor(() => {
+    expect(transcript.querySelector('[data-transcript-word="show"]')).toBe(firstWord)
+    expect(transcript.querySelector('[data-transcript-word="further"]')).toBe(secondWord)
+    expect(transcript.querySelector('[data-transcript-word="more"]')?.className).toContain(
+      "voice-transcript-word-enter",
+    )
+  })
+
+  fireEvent.keyDown(document, { key: "m" })
+  expect(screen.getByRole("button", { name: "Start listening" })).toBeTruthy()
+})
 
 test("the pill is part of the human input path, not the agent's", async () => {
   renderPage()

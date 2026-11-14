@@ -1,6 +1,7 @@
 import type { AgentComponent } from "@ui-sdk/react/agent"
 import {
   choicesHint,
+  closeChoice,
   find,
   itemKey,
   matchItem,
@@ -31,7 +32,7 @@ const PUBLISH = "Publish post"
 const PREVIEW = "Preview post"
 
 const hint =
-  'Try "set the title to ...", "open the community menu", ' +
+  'Try "set the title to ...", "open the community menu", "close community options", ' +
   '"change the audience to Followers", "turn comments off", or "publish the post".'
 
 /** How people actually describe each option, beyond its literal label. */
@@ -313,6 +314,11 @@ const rules: VoiceRule[] = [
   // ---------------------------------------------------------------------------
   // Opening controls. "Show Community." must not be mistaken for a value.
   // ---------------------------------------------------------------------------
+  {
+    pattern:
+      /^(?:close|hide|dismiss|collapse)\s+(?:the\s+|my\s+)?community(?:\s+(?:menu|list|options|choices|dropdown|picker|selector))?$/,
+    build: (_match, snapshot) => closeChoice(COMMUNITY, snapshot, "community", hint),
+  },
   {
     pattern:
       /^(?:open|show|display|reveal|bring\s+up|pull\s+up|open\s+up)\s+(?:the\s+|my\s+)?community(?:\s+(?:menu|list|options|choices|dropdown|picker|selector))?$/,
@@ -666,6 +672,9 @@ const criteria: Record<string, string> = {
     "Speech-to-text slips: 'show comedy', 'open community menu'. " +
     "The key difference from set_community: no specific community is named. " +
     "Never treat the word 'community' alone as a value.",
+  close_community:
+    "The speaker wants to close or hide the community picker without choosing an option. " +
+    "Examples: 'close community options', 'close the community menu', 'hide the community list'.",
   show_visibility:
     "The speaker wants to hear or see the audience choices without choosing one. " +
     "Examples: 'who can see this', 'show the audience options', 'what are my visibility choices', " +
@@ -725,6 +734,7 @@ const INSTRUCTIONS = [
   "   'visibility to followers', 'audience everyone', 'community product', 'comments off'.",
   "3. A control noun alone is a request to open or show it: 'community', 'show community',",
   "   'open the community menu', 'who can see this', 'show audience options'.",
+  "   A close or hide request should close that picker: 'close community options'.",
   "4. When a menu is open or the option is obvious, a bare option belongs to that menu:",
   "   'change to product', 'go with design', 'the followers one' → choose_option.",
   "5. Handle negation as the opposite switch: \"don't allow comments\", 'no comments',",
@@ -763,7 +773,7 @@ export const composeVoice: ExampleVoice = {
     "explain its options (e.g. 'community pizza' is set_community).",
   instructions: [INSTRUCTIONS],
   actionable:
-    /\b(?:title|body|content|text|community|categor(?:y|ies)|audience|visibility|visible|privacy|private|comments?|repl(?:y|ies)|respond|publish|preview|review|clear|delete|remove|erase|open|show|display|set|change|switch|turn|enable|disable|allow|block|make|put|keep|share|see)\b/i,
+    /\b(?:title|body|content|text|community|categor(?:y|ies)|audience|visibility|visible|privacy|private|comments?|repl(?:y|ies)|respond|publish|preview|review|clear|delete|remove|erase|open|show|display|close|hide|dismiss|collapse|set|change|switch|turn|enable|disable|allow|block|make|put|keep|share|see)\b/i,
   scope: {
     instructions:
       "Is this utterance a request to change, open, show, clear, preview or publish something " +
@@ -830,6 +840,9 @@ export const composeVoice: ExampleVoice = {
 
       case "open_community":
         return openChoice(COMMUNITY, snapshot, "community", hint)
+
+      case "close_community":
+        return closeChoice(COMMUNITY, snapshot, "community", hint)
 
       case "show_visibility":
         return openChoice(VISIBILITY, snapshot, "audience", hint)
