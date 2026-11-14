@@ -106,6 +106,7 @@ export function TimelinePage() {
   const [replyTexts, setReplyTexts] = React.useState<Record<string, string>>({})
   const [quoteTexts, setQuoteTexts] = React.useState<Record<string, string>>({})
   const [quoting, setQuoting] = React.useState<Record<string, boolean>>({})
+  const [replying, setReplying] = React.useState<Record<string, boolean>>({})
   const controller = React.useMemo(() => createTimelineController(), [])
 
   function updatePost(id: string, patch: Partial<TimelinePost>) {
@@ -323,7 +324,12 @@ export function TimelinePage() {
                       <Button
                         aria-label={"Reply to " + post.author + "'s post"}
                         className={buttonClass("ghost", "h-8 gap-1.5 px-2 text-[13px] text-zinc-500")}
-                        onClick={() => {}}
+                        onClick={() =>
+                          setReplying((current) => ({
+                            ...current,
+                            [post.id]: !current[post.id],
+                          }))
+                        }
                       >
                         <MessageIcon className="size-4" />
                         <span>{post.replies}</span>
@@ -463,6 +469,7 @@ export function TimelinePage() {
                       </CollapsiblePanel>
                     </Collapsible>
 
+                    {replying[post.id] ? (
                     <div className="mt-3 flex gap-2">
                       <Textarea
                         aria-label={"Your reply to " + post.author}
@@ -493,6 +500,7 @@ export function TimelinePage() {
                         {"Post reply to " + post.author}
                       </Button>
                     </div>
+                    ) : null}
                   </div>
                 </div>
               </TimelineItem>

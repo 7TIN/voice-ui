@@ -196,6 +196,7 @@ const rules = [
       const request: DictationRequest = {
         dictate: field,
         prompt: 'Listening for your reply to ' + author + '. Say it, then "done".',
+        steps: [{ ref: postLabel(author, "reply"), action: "press", args: [] }],
       }
       return request
     },

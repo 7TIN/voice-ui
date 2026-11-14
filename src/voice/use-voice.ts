@@ -191,6 +191,8 @@ export function useVoice(
     setStatus(active.current ? "Dictation cancelled. Listening." : "Dictation cancelled.")
   }, [])
 
+  const runCommandRef = useRef<((raw: string, source: "voice" | "typed") => Promise<void>) | null>(null)
+
   const appendDictation = useCallback(
     async (raw: string) => {
       const current = dictationRef.current
@@ -199,15 +201,17 @@ export function useVoice(
       const text = raw.trim()
       if (!text) return
 
+      const source = current.source
+
       const tail = text.match(FINISH_TAIL)
       if (FINISH_EXACT.test(text)) {
         await finishDictation()
         return
       }
       if (tail) {
-        const content = tail[1].trim()
-        if (content) {
-          current.text = current.text ? current.text + " " + content : content
+        const contentTail = tail[1].trim()
+        if (contentTail) {
+          current.text = current.text ? current.text + " " + contentTail : contentTail
           await writeContent(current.target, current.text)
         }
         await finishDictation()
@@ -218,9 +222,40 @@ export function useVoice(
         return
       }
 
-      // Everything except an explicit finish/cancel is content, never a command.
-      current.text = current.text ? current.text + " " + text : text
-      await writeContent(current.target, current.text)
+      const isPostCommand = (segment: string) =>
+        /^(?:post|submit|send|publish|pause)\s+(?:this|it|the\s+(?:reply|quote|message|comment))?$/i.test(
+          segment.trim().replace(/[.!?]+$/g, ""),
+        )
+
+      const segments = text.split(/(?<=[.!?])\s+/)
+      const contentParts: string[] = []
+      let postCommand: string | null = null
+      for (const segment of segments) {
+        const trimmed = segment.trim()
+        if (!trimmed) continue
+        if (isPostCommand(trimmed)) {
+          postCommand = trimmed.replace(/[.!?]+$/g, "")
+        } else {
+          contentParts.push(trimmed)
+        }
+      }
+
+      const content = contentParts.join(" ").trim()
+      if (content) {
+        current.text = current.text ? current.text + " " + content : content
+        await writeContent(current.target, current.text)
+      }
+
+      if (postCommand) {
+        await finishDictation()
+        await runCommandRef.current?.(postCommand, source)
+        return
+      }
+
+      if (!content) {
+        current.text = current.text ? current.text + " " + text : text
+        await writeContent(current.target, current.text)
+      }
       setStatus(voice.dictation.prompt(current.target, current.source))
       setHint("“" + current.text + "” — say \"done\" when you finish.")
       setTranscript("")
@@ -318,6 +353,8 @@ export function useVoice(
     },
     [speech, voice],
   )
+
+  runCommandRef.current = runCommand
 
   const enqueue = useCallback(
     (text: string, source: "voice" | "typed") => {
