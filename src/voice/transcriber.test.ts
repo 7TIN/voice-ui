@@ -73,7 +73,7 @@ test("the adapter configures recognition and forwards its events", () => {
   expect(recognition).toBeTruthy()
   expect(recognition.started).toBe(true)
   expect(recognition.lang).toBe("en-US")
-  expect(recognition.continuous).toBe(false)
+  expect(recognition.continuous).toBe(true)
   expect(recognition.interimResults).toBe(true)
 
   recognition.onstart?.()

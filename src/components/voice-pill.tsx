@@ -38,8 +38,9 @@ export function VoicePill({
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
 
-  const listening = voice.phase === "listening"
+  const listening = voice.live
   const busy = BUSY.has(voice.phase)
+  const dictating = voice.dictation !== null
 
   function submitText(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -90,7 +91,13 @@ export function VoicePill({
           ) : null}
           <Button
             type="button"
-            aria-label={listening ? "Stop listening" : "Start listening"}
+            aria-label={
+              dictating && listening
+                ? "Stop dictating"
+                : listening
+                  ? "Stop listening"
+                  : "Start listening"
+            }
             aria-pressed={listening}
             disabled={busy}
             onClick={() => (listening ? voice.stop() : voice.start())}
@@ -128,7 +135,10 @@ export function VoicePill({
               <span className="font-normal text-zinc-400"> {voice.interim}</span>
             ) : null}
           </p>
-          <p className="mt-0.5 text-[12px] leading-4 text-zinc-400">
+          <p
+            title={voice.hint ?? undefined}
+            className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-zinc-400"
+          >
             {voice.hint ??
               (listening
                 ? "Speak normally. Press the square to stop."

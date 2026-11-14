@@ -3,7 +3,7 @@
 A social feed you can operate with your voice, built on Vercel's [ui-sdk](https://ui-sdk.dev)
 (`@ui-sdk/*`), React 19 + Vite + TypeScript, with Bun as the toolchain.
 
-Status: **M0 and M1 built and verified (2026-11-14). M2 (feed) not started.**
+Status: **M0, M1, and the M1.1 voice pass built and verified (2026-11-14). M2 (feed) not started.**
 Last researched: ui-sdk `0.1.0-beta.1` (public beta, APIs may change).
 
 ---
@@ -327,14 +327,22 @@ The model finds targets by label, so labels are the API.
 
 `idle → listening → transcribing → planning → confirming → executing → done | error`
 
-Only one command runs at a time. The mic is disabled while `executing`. Every state is visible
-in the UI, and the last 20 commands are kept with their outcome.
+Only one command runs at a time; results are serialized through a promise chain so a long
+dictation cannot interleave with a plan. The recognizer is **continuous**: `done` returns to
+`listening` while the microphone session is open, and a silence `end` restarts it after 250 ms.
+The person closes the session with the Stop button.
+
+A **dictation turn** is `listening` with `dictation: "title" | "body"` set. In that state the
+next words are content, not commands: they are written straight through `contentPlan()` and
+never classified. `done` (or `"…, done"`) commits and returns to command listening; `cancel`
+discards. The accumulation survives pauses because the recognizer is continuous and every final
+chunk appends to the same buffer.
 
 ### 6.2 Speech-to-text
 
 | Option | Cost | Key | Trade-off |
 | --- | --- | --- | --- |
-| **Web Speech API** (`SpeechRecognition`) | free | none | Chrome/Edge only, online, interim results, no control over model |
+| **Web Speech API** (`SpeechRecognition`) | free | none | Chrome/Edge only, online, interim + continuous results, no control over model |
 | Hosted STT (Groq Whisper, OpenAI, Deepgram) via our Bun proxy | per minute | server-side | Better accuracy/latency control, needs a server |
 | Local whisper.cpp | free | none | Heavy install, slow start |
 
@@ -346,36 +354,73 @@ rather than sprinkling `any`.
 
 ### 6.3 Decision model
 
-```ts
-interface Decider {
-  plan(input: {
-    utterance: string
-    context: UiContext
-    components: ComponentView[]
-    recent: CommandRecord[]
-  }): Promise<Plan>
-}
-```
+Two layers, one output shape (`Plan`):
 
-Default implementation: OpenAI-compatible chat completions, temperature 0, JSON-schema output.
-Provider is an open question (§12). The prompt must:
+1. **Grammar first** (`interpretGrammar`, `src/agent/interpret.ts`): deterministic rules for the
+   common phrasings, exact values, menu opening, sequences ("open the community menu and change
+   to product"), and dictation primers. Instant, free, offline.
+2. **Gemini Decisions API** (`classifyIntent`, `src/agent/gemini.ts`, model
+   `gemini-decision-1`) when the grammar misses. It is a **classifier**, not a generator: it
+   returns one intent and a calibrated confidence. Parameters are extracted deterministically
+   afterwards by scanning the transcript against the control's real items and aliases.
 
-- receive a **projection** of the snapshot, not the whole page;
-- receive only refs, labels, actions and state that actually exist;
-- treat all page text (post bodies, names, comments) as untrusted data;
-- return `ask` instead of guessing when a reference is ambiguous;
-- copy dictated text verbatim into `args`;
-- cap plans at ~5 steps.
+The Decisions API question set is:
+
+- `is_command` — a `noul` scope check that rejects chit-chat, questions about the app, and page
+  text read aloud.
+- `intent` — a `choice` question over 16 intents: set/clear title or body, dictate title or body,
+  set community or audience, open the community menu, show the audience choices, choose an open
+  option, comments on/off, publish, preview, unknown.
+
+The prompt itself is the specification: each intent carries its use case, direct and indirect
+examples, synonyms, negation, and the speech-to-text slips it should forgive (`review`/`preview`,
+`of`/`off`, `too`/`to`, `these`/`this`, `comedy`/`community`, `produce`/`Product`,
+`follow us`/`followers`, `only need`/`Only me`). The visible controls (labels, current values,
+open state, and options) are passed as context, so "change to product" while the Community menu
+is open is understood as that menu's option.
+
+A strong intent (≥ 0.75) overrides a cautious `is_command: false` only when the transcript
+mentions a control or an action word. This rescues fragments like "Visibility to followers."
+while leaving page text like "2 followers." alone. The overall intent threshold is 0.4; below
+it, the pill says what it heard and suggests a phrasing.
+
+Deterministic value matching (`mention`) accepts the label, the raw value, curated aliases
+("public" → Everyone, "just for me" → Only me, "people who follow me" → Followers), whole-word
+containment, and one-or-two-character speech-to-text slips. A later mention wins, because people
+finish with the value.
 
 ### 6.4 API keys in a Vite app
 
-Vite ships only client code, so an API key in the bundle is public. Supported setup:
+Vite ships only client code, so a key in the bundle is public. The current demo setup:
 
-- `server/` — a ~60-line Bun HTTP server holding `LLM_API_KEY` / `STT_API_KEY`, with
-  `bun run dev` starting Vite and the proxy together; Vite proxies `/api` to it.
-- `.env.local` is gitignored; `.env.example` lists names only.
-- No key → the voice panel reports "Decision model not configured" and the typed path stays
-  available. There is no fake/local regex planner pretending to be the agent.
+- `VITE_GEMINI_API_KEY` in `.env` is the first source; `.env` is gitignored and
+  `.env.example` lists the name only.
+- Otherwise the pill's **Key** panel stores the key in `localStorage["gemini-api-key"]`.
+- No key → grammar-only mode. Every deterministic command still works; indirect phrasings fall
+  back to the "I don't know that one yet" hint.
+
+This is a demo convenience, not a production posture. The open follow-up is a Bun proxy holding
+`GEMINI_API_KEY` server-side and exposing `/api/classify`, so the client bundle stays clean.
+
+### 6.5 Dictation and persistence
+
+Saying a field's name without its content starts a dictation turn:
+
+| Said | Effect |
+| --- | --- |
+| "set the title", "write the title", "let me dictate the title" | `dictate: "title"` |
+| "write the body", "write the post", "I want to write a long post" | `dictate: "body"` |
+| "set the title to X" (content present) | normal `setValue` plan |
+| "done", "that's it", "…, done" | commit and return to command listening |
+| "cancel", "never mind", "forget it" | discard, nothing written |
+
+While dictating, the pill shows the growing text in its hint; each final chunk is written to the
+field immediately, so a long sentence survives a pause or a recognizer restart. The microphone
+stays open after the commit (persistent session) until Stop is pressed.
+
+The typed fallback follows the same state machine: type "write the body", then type the body,
+then "done". It is also the way to exercise dictation in a browser without a microphone, and in
+jsdom tests.
 
 ---
 
@@ -485,8 +530,10 @@ match, it returns `ask` with the candidates.
 - Borders: 1px `zinc-200`; one shadow only for popups.
 - Motion: 150ms ease for state, 200ms for popups; respect `prefers-reduced-motion`.
 - Mic: fixed bottom-right pill on wide screens so it never covers the composer's Publish action,
-  centred on narrow screens. Idle = outline, listening = pulsing ring + timer,
-  planning/executing = spinner + verb ("Thinking…", "Opening comments…"), error = amber.
+  centred on narrow screens. Idle = outline, listening = pulsing ring, planning/executing =
+  spinner + verb ("Thinking…", "Opening comments…"), error = amber.
+- Dictation: the status names the field ("Listening for the title…") and the hint shows the
+  text as it grows. The mic label becomes "Stop dictating" while the turn is live.
 - Live transcript: interim text in lighter weight, final text in normal weight.
 - Command log: each command expands to its steps with ✓/✗ and the model's `say` line.
 - Confirmation card (built): the exact `data-agent-confirm` sentence, Cancel / Approve, and a note
@@ -545,7 +592,7 @@ with a pre-check and a post-verify (`src/agent/execute.ts`), and the pill's inte
 - The mic pill's error mapping covers `not-allowed`, `no-speech`, `audio-capture`, `network`,
   `aborted`, `unsupported` and a failing `start()`.
 
-Verified: `bun run lint`, `bun run test` (13 tests), `bun run build` all green; headless Chrome
+Verified: `bun run lint`, `bun run test` (13 tests at the time), `bun run build` all green; headless Chrome
 drove the typed path end to end — unknown command → error, "set the title to …" → "Title set."
 with the snapshot matching, body, comments off, publish → approval → "Published." with the
 published card. The mic click in headless returns "Microphone access is blocked.", mapped from
@@ -554,6 +601,26 @@ published card. The mic click in headless returns "Microphone access is blocked.
 
 Status text and hints are kept short so they fit the 320 px pill on wide screens. Voice uses
 the browser's speech service, so the header no longer claims nothing leaves the tab.
+
+### M1.1 — Gemini classification, fuzzy values, and dictation — **done**
+
+- `src/agent/gemini.ts` calls the Gemini Decisions API. Its prompt documents every intent with
+  use cases, indirect phrasings, negation and STT confusions; the visible controls are passed as
+  context (including open menus and their options).
+- The grammar gained: open/show community and audience, generic "change to X" that resolves
+  against the page's real items (open menu first), audience/community aliases, comment negation,
+  indirect publish/preview, and two-command sequences joined by "and"/"then".
+- Saying a field name without content starts dictation. The voice session is continuous and
+  persistent; dictation text is written straight through `contentPlan()`, never classified.
+- `executePlan` verifies state after the fact, so an open menu followed by a selection is
+  checked against the final value.
+
+Verified: 18 Vitest tests green (`bun run test`), `bun run build` green. Headless Chrome with the
+typed path: "Visibility to followers." → Followers; "Show Community." → menu open; "change to
+product" → Product; "open the community menu and change to design" → both steps; dictation into
+title and body across chunks; Gemini-only phrasings ("Could you make this visible only to my
+followers", "Nobody can reply to this", "Show me who can see this") resolved; "2 followers."
+correctly rejected as page text.
 
 ### M2 — Feed and posts
 

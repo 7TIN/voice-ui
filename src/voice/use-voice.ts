@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { agent } from "../agent/bridge"
 import { executePlan } from "../agent/execute"
-import { interpret } from "../agent/interpret"
-import { isPlan } from "../agent/plan"
+import { contentPlan, interpret } from "../agent/interpret"
+import { isDictation, isPlan } from "../agent/plan"
 import { createWebSpeechTranscriber, type Transcriber } from "./transcriber"
 
 export type VoicePhase =
@@ -14,9 +14,15 @@ export type VoicePhase =
   | "done"
   | "error"
 
+export type DictationTarget = "title" | "body"
+
 export type Voice = {
   phase: VoicePhase
   supported: boolean
+  /** True while the microphone session is open, including between commands. */
+  live: boolean
+  /** The field currently being dictated, if any. */
+  dictation: DictationTarget | null
   /** Live words from the recognizer, before they are final. */
   interim: string
   /** The last command, whether it was spoken or typed. */
@@ -31,6 +37,7 @@ export type Voice = {
 export const IDLE_STATUS = "Say or type a command."
 
 const DONE_RESET_MS = 5_000
+const RESTART_MS = 250
 
 const ERRORS: Record<string, { status: string; hint: string }> = {
   "not-allowed": {
@@ -72,6 +79,26 @@ function mapError(code: string) {
   )
 }
 
+function promptFor(target: DictationTarget) {
+  return target === "title"
+    ? 'Listening for the title. Say it, then "done".'
+    : 'Listening for the body. Say it, then "done".'
+}
+
+function nounFor(target: DictationTarget) {
+  return target === "title" ? "title" : "body"
+}
+
+/** The waiting prompt for a dictation turn, matching how it is being filled. */
+function promptForSource(source: "voice" | "typed", target: DictationTarget) {
+  if (source === "voice") return promptFor(target)
+  return "Adding to the " + nounFor(target) + '. Type "done" when you finish.'
+}
+
+const FINISH_EXACT = /^(?:done|finish|finished|that'?s it|thats it|end|stop|i'?m done)$/i
+const FINISH_TAIL = /^(.*?)[,.!?]\s*(?:done|finish(?:ed)?|that'?s it)\.?$/i
+const CANCEL = /^(?:cancel|never\s*mind|nevermind|discard|forget\s+it|start\s+over)$/i
+
 export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voice {
   const speech = useMemo(
     () => transcriber ?? createWebSpeechTranscriber(),
@@ -79,63 +106,231 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
   )
 
   const [phase, setPhase] = useState<VoicePhase>("idle")
+  const [live, setLive] = useState(false)
+  const [dictation, setDictation] = useState<DictationTarget | null>(null)
   const [interim, setInterim] = useState("")
   const [transcript, setTranscript] = useState("")
   const [status, setStatus] = useState(IDLE_STATUS)
   const [hint, setHint] = useState<string | null>(null)
 
-  /** True from `start` until a result arrives, so late events cannot clobber a new run. */
+  /** True while the recognizer may still emit results for this session. */
   const listening = useRef(false)
+  /** True while the person wants the microphone on, across commands. */
+  const active = useRef(false)
+  const dictationRef = useRef<{
+    target: DictationTarget
+    text: string
+    source: "voice" | "typed"
+  } | null>(null)
   const runId = useRef(0)
   const apiKeyRef = useRef(apiKey ?? null)
-  apiKeyRef.current = apiKey ?? apiKeyRef.current
 
-  const run = useCallback(async (raw: string) => {
-    const text = raw.trim()
-    if (!text) return
+  useEffect(() => {
+    if (apiKey) apiKeyRef.current = apiKey
+  }, [apiKey])
 
-    const id = (runId.current += 1)
-    setTranscript(text)
-    setInterim("")
-    setHint(null)
-    setPhase("planning")
-    setStatus("Working out what to do…")
+  /** Commands are serialized so a long dictation cannot interleave with a plan. */
+  const chain = useRef<Promise<void>>(Promise.resolve())
+  const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
-    const interpreted = await interpret(text, snapshot, { apiKey: apiKeyRef.current })
+  const clearRestart = useCallback(() => {
+    if (restartTimer.current) {
+      clearTimeout(restartTimer.current)
+      restartTimer.current = null
+    }
+  }, [])
 
-    if (!isPlan(interpreted)) {
-      if (id !== runId.current) return
+  const keepListening = useCallback(() => {
+    clearRestart()
+    if (!active.current) return
+    restartTimer.current = setTimeout(() => {
+      restartTimer.current = null
+      if (active.current) speech.start()
+    }, RESTART_MS)
+  }, [clearRestart, speech])
+
+  const writeContent = useCallback(async (target: DictationTarget, text: string) => {
+    const result = await executePlan(contentPlan(target, text))
+    if (!result.ok) {
       setPhase("error")
-      setStatus(interpreted.error)
-      setHint(interpreted.hint)
+      setStatus(result.message)
+      setHint('Say "cancel" to discard, or keep going.')
+      return false
+    }
+    return true
+  }, [])
+
+  const finishDictation = useCallback(async () => {
+    const current = dictationRef.current
+    dictationRef.current = null
+    setDictation(null)
+    setHint(null)
+
+    if (!current || !current.text.trim()) {
+      setPhase("idle")
+      setStatus(IDLE_STATUS)
+      if (active.current) setPhase("listening")
       return
     }
 
-    const plan = interpreted
-    const needsApproval = plan.steps.some((step) => {
-      const target = snapshot.find(
-        (entry) => entry.ref === step.ref || entry.label === step.ref,
-      )
-      return Boolean(target?.confirm)
-    })
-
     setPhase("executing")
-    setStatus(needsApproval ? "Waiting for your approval…" : plan.say)
+    setStatus("Saving the " + nounFor(current.target) + "…")
+    const written = await writeContent(current.target, current.text)
+    if (!written) return
 
-    const result = await executePlan(plan)
-    if (id !== runId.current) return
-
-    setPhase(result.ok ? "done" : "error")
-    setStatus(result.message)
+    setPhase("done")
+    setStatus(
+      (current.target === "title" ? "Title" : "Body") +
+        " set." +
+        (active.current ? " I'm still listening if you want to say more." : ""),
+    )
     setHint(null)
+  }, [writeContent])
+
+  const cancelDictation = useCallback(() => {
+    dictationRef.current = null
+    setDictation(null)
+    setHint(null)
+    setTranscript("")
+    setPhase(active.current ? "listening" : "idle")
+    setStatus(active.current ? "Dictation cancelled. Listening." : "Dictation cancelled.")
   }, [])
+
+  const appendDictation = useCallback(
+    async (raw: string) => {
+      const current = dictationRef.current
+      if (!current) return
+
+      const text = raw.trim()
+      if (!text) return
+
+      const tail = text.match(FINISH_TAIL)
+      if (FINISH_EXACT.test(text)) {
+        await finishDictation()
+        return
+      }
+      if (tail) {
+        const content = tail[1].trim()
+        if (content) {
+          current.text = current.text ? current.text + " " + content : content
+          await writeContent(current.target, current.text)
+        }
+        await finishDictation()
+        return
+      }
+      if (CANCEL.test(text)) {
+        cancelDictation()
+        return
+      }
+
+      // Everything except an explicit finish/cancel is content, never a command.
+      current.text = current.text ? current.text + " " + text : text
+      await writeContent(current.target, current.text)
+      setStatus(promptForSource(current.source, current.target))
+      setHint("“" + current.text + "” — say \"done\" when you finish.")
+      setTranscript("")
+    },
+    [cancelDictation, finishDictation, writeContent],
+  )
+
+  const runCommand = useCallback(
+    async (raw: string, source: "voice" | "typed") => {
+      const text = raw.trim()
+      if (!text) return
+
+      const id = (runId.current += 1)
+      setTranscript(text)
+      setInterim("")
+      setHint(null)
+      setPhase("planning")
+      setStatus("Working out what to do…")
+
+      const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
+      const interpreted = await interpret(text, snapshot, { apiKey: apiKeyRef.current })
+
+      if (id !== runId.current) return
+
+      if (isDictation(interpreted)) {
+        dictationRef.current = {
+          target: interpreted.dictate,
+          text: "",
+          source,
+        }
+        setDictation(interpreted.dictate)
+        setTranscript("")
+        setPhase("listening")
+        setStatus(
+          source === "voice" && speech.supported
+            ? interpreted.prompt
+            : 'Type the ' +
+                nounFor(interpreted.dictate) +
+                ' in the command box, then type "done".',
+        )
+        setHint(
+          source === "voice" && speech.supported
+            ? "Speak naturally. Pauses are fine; the words are kept until you say \"done\"."
+            : "The next line you type is the " +
+                nounFor(interpreted.dictate) +
+                '. Type "done" on its own to finish.',
+        )
+        if (source === "voice" && !active.current) {
+          active.current = true
+          setLive(true)
+          speech.start()
+        }
+        return
+      }
+
+      if (!isPlan(interpreted)) {
+        setPhase("error")
+        setStatus(interpreted.error)
+        setHint(interpreted.hint)
+        return
+      }
+
+      const plan = interpreted
+      const needsApproval = plan.steps.some((step) => {
+        const target = snapshot.find(
+          (entry) => entry.ref === step.ref || entry.label === step.ref,
+        )
+        return Boolean(target?.confirm)
+      })
+
+      setPhase("executing")
+      setStatus(needsApproval ? "Waiting for your approval…" : plan.say)
+
+      const result = await executePlan(plan)
+      if (id !== runId.current) return
+
+      setPhase(result.ok ? "done" : "error")
+      setStatus(result.message)
+      setHint(null)
+    },
+    [speech],
+  )
+
+  const enqueue = useCallback(
+    (text: string, source: "voice" | "typed") => {
+      chain.current = chain.current
+        .then(() =>
+          dictationRef.current ? appendDictation(text) : runCommand(text, source),
+        )
+        .catch(() => {
+          setPhase("error")
+          setStatus("Something went wrong with that command.")
+          setHint("Try again, or type it.")
+        })
+    },
+    [appendDictation, runCommand],
+  )
 
   useEffect(() => {
     return speech.subscribe((event) => {
       switch (event.type) {
         case "start":
           listening.current = true
+          active.current = true
+          setLive(true)
           break
 
         case "interim":
@@ -145,15 +340,23 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
         case "final":
           listening.current = false
           setInterim("")
-          setPhase("transcribing")
-          setStatus("Heard you.")
-          void run(event.text)
+          if (!dictationRef.current) {
+            setPhase("transcribing")
+            setStatus("Heard you.")
+          }
+          enqueue(event.text, "voice")
           break
 
         case "error": {
           // An `aborted` error is our own cancel; never turn it into a failure.
-          if (event.code === "aborted" && !listening.current) break
+          if (event.code === "aborted") break
           listening.current = false
+
+          // Silence is normal in a persistent session: restart quietly.
+          if (event.code === "no-speech" && active.current) break
+
+          active.current = false
+          setLive(false)
           const mapped = mapError(event.code)
           setPhase("error")
           setStatus(mapped.status)
@@ -163,27 +366,52 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
 
         case "end":
           listening.current = false
-          // No words arrived: return to rest instead of leaving a dead "Listening".
+          if (active.current) {
+            // Chrome ends a continuous session after long silence. Keep the
+            // microphone available for the next command or dictation chunk.
+            keepListening()
+            break
+          }
           setPhase((current) => (current === "listening" ? "idle" : current))
-          setStatus((current) => (current === "Listening — say what you want." ? IDLE_STATUS : current))
+          setStatus((current) =>
+            current === "Listening — say what you want." ? IDLE_STATUS : current,
+          )
           break
       }
     })
-  }, [speech, run])
+  }, [enqueue, keepListening, speech])
 
-  useEffect(() => () => speech.abort(), [speech])
+  useEffect(
+    () => () => {
+      active.current = false
+      clearRestart()
+      speech.abort()
+    },
+    [clearRestart, speech],
+  )
 
   useEffect(() => {
     if (phase !== "done") return
     const timer = setTimeout(() => {
-      setPhase("idle")
-      setStatus(IDLE_STATUS)
+      if (active.current) {
+        setPhase("listening")
+        setStatus(
+          dictationRef.current
+            ? promptForSource(dictationRef.current.source, dictationRef.current.target)
+            : "Listening — say what you want.",
+        )
+      } else {
+        setPhase("idle")
+        setStatus(IDLE_STATUS)
+      }
     }, DONE_RESET_MS)
     return () => clearTimeout(timer)
   }, [phase])
 
   const start = useCallback(() => {
     if (!speech.supported) {
+      active.current = false
+      setLive(false)
       const mapped = mapError("unsupported")
       setPhase("error")
       setStatus(mapped.status)
@@ -192,31 +420,59 @@ export function useVoice(transcriber?: Transcriber, apiKey?: string | null): Voi
     }
 
     runId.current += 1
+    active.current = true
+    setLive(true)
     setInterim("")
     setTranscript("")
     setHint(null)
     setPhase("listening")
-    setStatus("Listening — say what you want.")
+    if (dictationRef.current) {
+      // Dictation continues across input modes: the mic is now the source.
+      dictationRef.current.source = "voice"
+    }
+    setStatus(
+      dictationRef.current
+        ? promptFor(dictationRef.current.target)
+        : "Listening — say what you want.",
+    )
     speech.start()
   }, [speech])
 
   const stop = useCallback(() => {
+    active.current = false
+    setLive(false)
+    clearRestart()
+    dictationRef.current = null
+    setDictation(null)
     speech.stop()
-  }, [speech])
+    setPhase("idle")
+    setStatus(IDLE_STATUS)
+    setHint(null)
+  }, [clearRestart, speech])
 
   const submit = useCallback(
     (text: string) => {
-      // A typed command wins: cancel any listening session before planning.
+      // A typed command wins over the microphone, but dictation accepts typed
+      // content as well, so the person can finish without speaking.
       listening.current = false
+      if (dictationRef.current) {
+        dictationRef.current.source = "typed"
+      } else {
+        active.current = false
+        setLive(false)
+        clearRestart()
+      }
       speech.abort()
-      void run(text)
+      enqueue(text, "typed")
     },
-    [run, speech],
+    [clearRestart, enqueue, speech],
   )
 
   return {
     phase,
     supported: speech.supported,
+    live,
+    dictation,
     interim,
     transcript,
     status,

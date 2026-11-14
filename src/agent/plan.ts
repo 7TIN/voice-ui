@@ -24,8 +24,23 @@ export type PlanProblem = {
   hint: string
 }
 
-export type Interpreted = Plan | PlanProblem
+/**
+ * The user asked to fill a long field but did not say the content yet. The
+ * voice session switches into dictation: the next words are content, not a
+ * command, and they may span several pauses.
+ */
+export type DictationRequest = {
+  dictate: "title" | "body"
+  /** What to show while the microphone waits for the content. */
+  prompt: string
+}
+
+export type Interpreted = Plan | PlanProblem | DictationRequest
 
 export function isPlan(value: Interpreted): value is Plan {
   return "steps" in value
+}
+
+export function isDictation(value: Interpreted): value is DictationRequest {
+  return "dictate" in value
 }

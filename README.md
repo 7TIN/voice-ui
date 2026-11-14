@@ -8,14 +8,32 @@ through the ui-sdk agent bridge, calls validated component actions, and verifies
 
 ## Status
 
-M1 is built: a Create Post form from ui-sdk components, a single agent bridge with a
-human-approval gate for publishing, and a voice panel (Web Speech adapter + typed fallback)
-that drives the same bridge. The feed is not started.
+M1 is built, plus the M1.1 voice pass: a Create Post form from ui-sdk components, a single
+agent bridge with a human-approval gate for publishing, and a voice panel (Web Speech adapter +
+typed fallback) that drives the same bridge. Voice uses a deterministic grammar first and the
+Gemini Decisions API for indirect phrasing, and a field name without content starts a
+persistent dictation turn. The feed is not started.
 
 ```bash
 bun install
 bun run dev      # http://localhost:5173, then say or type a command in the pill
 ```
+
+Try, in the pill's **Type** box:
+
+```text
+Visibility to followers.
+open the community menu
+change to product
+set the title            → then say/type the title, then "done"
+write the body           → then say/type the body, then "done"
+turn comments off
+review post
+publish the post
+```
+
+The mic stays open across commands; press Stop to end the session. Without a Gemini key the
+deterministic commands still work and indirect phrasings fall back to a suggestion.
 
 ## Scripts
 

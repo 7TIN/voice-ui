@@ -86,7 +86,9 @@ export function createWebSpeechTranscriber(
 
     const next = new Ctor()
     next.lang = lang
-    next.continuous = false
+    // Keep the session open across pauses. This is what lets a long title or a
+    // multi-sentence body be spoken in one go; the hook decides when to stop.
+    next.continuous = true
     next.interimResults = true
     next.maxAlternatives = 1
 
