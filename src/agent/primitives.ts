@@ -108,7 +108,7 @@ const PRIMITIVES: Record<string, PrimitiveBehavior> = {
     behavior:
       "Its label is its trigger's accessible name, for example “Options for Ada Lovelace's post”. " +
       "setOpen true opens the menu. Each item is a menuitem with its own text; press with that text " +
-      "opens the menu if needed and chooses the item. An item marked data-agent-confirm needs a person.",
+      "opens the menu if needed and chooses the item. An item marked data-agent-confirm is consequential.",
   },
   Dialog: {
     name: "Dialog",

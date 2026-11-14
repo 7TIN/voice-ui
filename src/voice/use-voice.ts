@@ -87,6 +87,44 @@ const FINISH_EXACT = /^(?:done|finish|finished|that'?s it|thats it|end|stop|i'?m
 const FINISH_TAIL = /^(.*?)[,.!?]\s*(?:done|finish(?:ed)?|that'?s it)\.?$/i
 const CANCEL = /^(?:cancel|never\s*mind|nevermind|discard|forget\s+it|start\s+over)$/i
 
+/**
+ * The sentence a person says when they want their draft posted: "post this
+ * reply", "post reply to Ada", "submit this", "send it now", "publish the
+ * post". Heard during dictation it is a command, never message content.
+ */
+const POST_COMMAND =
+  /^(?:please\s+)?(?:post|submit|send|publish)\b(?:\s+(?:this|it|that|the|my|a|an))?(?:\s+(?:reply|comment|quote|message|response|answer|post|it|this|that))?(?:\s+now)?(?:\s+(?:to|on)\s+[a-z][a-z'’\-]*(?:\s+[a-z][a-z'’\-]*){0,3})?$/i
+
+/**
+ * Pull a posting command out of one sentence of a dictation, returning the
+ * words that stay message content and the command, if any.
+ *
+ * A command is accepted when it is the whole sentence ("Post this reply."),
+ * when it follows a comma ("we should avoid it, post this reply"), or — for
+ * recognizers that emit no punctuation at all — as the tail of the sentence.
+ */
+function extractPostCommand(
+  segment: string,
+  loose: boolean,
+): { content: string; command: string | null } {
+  const stripped = segment.trim().replace(/[.!?]+$/, "").trim()
+  if (POST_COMMAND.test(stripped)) return { content: "", command: stripped }
+
+  const words = stripped.split(/\s+/)
+  for (let n = Math.min(7, words.length - 1); n >= 1; n -= 1) {
+    const tail = words.slice(words.length - n).join(" ")
+    if (!POST_COMMAND.test(tail)) continue
+    const before = words[words.length - n - 1]
+    if (/[,;]$/.test(before) || loose) {
+      return {
+        content: words.slice(0, words.length - n).join(" "),
+        command: tail,
+      }
+    }
+  }
+  return { content: segment.trim(), command: null }
+}
+
 export function useVoice(
   voice: ExampleVoice,
   transcriber?: Transcriber,
@@ -222,22 +260,15 @@ export function useVoice(
         return
       }
 
-      const isPostCommand = (segment: string) =>
-        /^(?:post|submit|send|publish|pause)\s+(?:this|it|the\s+(?:reply|quote|message|comment))?$/i.test(
-          segment.trim().replace(/[.!?]+$/g, ""),
-        )
-
       const segments = text.split(/(?<=[.!?])\s+/)
       const contentParts: string[] = []
       let postCommand: string | null = null
       for (const segment of segments) {
         const trimmed = segment.trim()
         if (!trimmed) continue
-        if (isPostCommand(trimmed)) {
-          postCommand = trimmed.replace(/[.!?]+$/g, "")
-        } else {
-          contentParts.push(trimmed)
-        }
+        const found = extractPostCommand(trimmed, !/[.!?]/.test(trimmed))
+        if (found.command) postCommand = found.command
+        if (found.content) contentParts.push(found.content)
       }
 
       const content = contentParts.join(" ").trim()
@@ -252,10 +283,6 @@ export function useVoice(
         return
       }
 
-      if (!content) {
-        current.text = current.text ? current.text + " " + text : text
-        await writeContent(current.target, current.text)
-      }
       setStatus(voice.dictation.prompt(current.target, current.source))
       setHint("“" + current.text + "” — say \"done\" when you finish.")
       setTranscript("")
@@ -334,15 +361,9 @@ export function useVoice(
       }
 
       const plan = interpreted
-      const needsApproval = plan.steps.some((step) => {
-        const target = snapshot.find(
-          (entry) => entry.ref === step.ref || entry.label === step.ref,
-        )
-        return Boolean(target?.confirm)
-      })
 
       setPhase("executing")
-      setStatus(needsApproval ? "Waiting for your approval…" : plan.say)
+      setStatus(plan.say)
 
       const result = await executePlan(plan)
       if (id !== runId.current) return

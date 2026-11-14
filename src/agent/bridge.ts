@@ -1,9 +1,10 @@
 import { createAgent, registerTools } from "@ui-sdk/react/agent"
-import { askForConfirmation } from "./confirmation"
 
 export const agent = createAgent({
-  allow: (step, { signal }) =>
-    step.confirm ? askForConfirmation(step.confirm, { signal }) : true,
+  // Actions run without a human-approval popup. Consequential controls still
+  // carry `data-agent-confirm`, so the snapshot keeps describing which actions
+  // are consequential; the app just no longer gates them behind a dialog.
+  allow: () => true,
   timeout: 120_000,
 })
 

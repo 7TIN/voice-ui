@@ -226,8 +226,7 @@ export function AgentInspector({
             </>
           ) : (
             <p className="text-[11px] leading-5 text-zinc-500">
-              Pick a component to read its state and run one of its actions. Presses
-              that need a person open the approval card.
+              Pick a component to read its state and run one of its actions.
             </p>
           )}
         </div>

@@ -58,24 +58,32 @@ function resolveSubmit(snapshot: AgentComponent[], text: string): string | null 
     (component) =>
       !component.offPage &&
       component.component === "textarea" &&
-      /^Your (?:reply|quote) to /.test(component.label ?? ""),
+      /^Your (?:reply to|quote of) /.test(component.label ?? ""),
   )
-  const isQuoteHint = /quote/i.test(text)
-  let candidates = textareas
-  if (isQuoteHint) {
-    candidates = textareas.filter((component) => /quote/i.test(component.label ?? ""))
-  } else {
-    candidates = textareas.filter((component) => /reply/i.test(component.label ?? ""))
-  }
+  const wantsQuote = /quote/i.test(text)
+  let candidates = wantsQuote
+    ? textareas.filter((component) => /quote/i.test(component.label ?? ""))
+    : textareas.filter((component) => /reply/i.test(component.label ?? ""))
   if (!candidates.length) candidates = textareas
+
+  // A named author ("post reply to Ada") wins over the filled field.
+  const author = authorFrom(text)
+  if (author) {
+    const named = candidates.filter((component) =>
+      (component.label ?? "").includes(author),
+    )
+    if (named.length) candidates = named
+  }
+
   const active =
-    candidates.find((component) => component.value && String(component.value).trim()) ??
+    candidates.find((component) => String(component.value ?? "").trim()) ??
     candidates[0] ??
-    textareas[0]
+    null
   if (!active?.label) return null
-  const author = active.label.replace(/^Your (?:reply|quote) to /, "")
-  const isQuote = /quote/i.test(active.label)
-  return isQuote ? "Post quote of " + author : "Post reply to " + author
+  const target = active.label.replace(/^Your (?:reply to|quote of) /, "")
+  return /quote/i.test(active.label)
+    ? "Post quote of " + target
+    : "Post reply to " + target
 }
 
 function resolveSection(text: string): string | null {
@@ -339,7 +347,8 @@ const rules = [
     },
   },
   {
-    pattern: /^(?:post|submit|send|publish)\s+(?:this|it|the\s+(?:reply|quote|message))?$/,
+    pattern:
+      /^(?:please\s+)?(?:post|submit|send|publish)\b(?:\s+(?:this|it|that|the|my|a|an))?(?:\s+(?:reply|comment|quote|message|response|answer|post|it|this|that))?(?:\s+now)?(?:\s+(?:to|on)\s+.+)?$/,
     build: (_match: RegExpMatchArray, snapshot: AgentComponent[]) => {
       const button = resolveSubmit(snapshot, _match.input ?? "")
       if (!button) return null
@@ -451,8 +460,7 @@ const criteria: { intent: string; criteria: string }[] = [
     intent: "report_post",
     criteria:
       "The speaker wants to report a post. " +
-      "Examples: 'report this post', 'report Ada's post', 'report it'. " +
-      "Reporting needs a person's approval.",
+      "Examples: 'report this post', 'report Ada's post', 'report it'.",
   },
   {
     intent: "go_section",
@@ -471,7 +479,9 @@ const criteria: { intent: string; criteria: string }[] = [
     intent: "post_submit",
     criteria:
       "The speaker wants to post the reply or quote they just typed or dictated. " +
-      "Examples: 'post this reply', 'post this', 'submit this', 'send it', 'publish this message'.",
+      "Examples: 'post this reply', 'post this', 'post reply', 'post this comment', " +
+      "'submit this', 'send it', 'publish this message', 'post reply to Ada'. " +
+      "This is not for starting a new post or for 'post in Design'.",
   },
   {
     intent: "back_to_gallery",
@@ -493,7 +503,7 @@ const INSTRUCTIONS = [
   "   or by 'this'/'it' when a post is in focus. 'Like Ada's post' = like_post.",
   "3. A person is identified by name or handle in the right-hand 'Who to follow' list.",
   "4. 'Follow' and 'unfollow' refer to people, never to posts.",
-  "5. 'Report' is consequential and always needs a person's approval; still classify it.",
+  "5. 'Report' is consequential; classify it normally — the app runs it right away.",
   "6. 'Reply saying X' and 'quote saying X' carry the text X; 'reply' alone starts dictation.",
   "7. Sections are Home, Explore, Notifications, Messages, Bookmarks, Profile.",
   "8. Ignore filler and politeness: 'um', 'please', 'could you'.",

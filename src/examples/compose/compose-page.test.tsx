@@ -1,23 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, expect, test } from "vitest"
+import { expect, test } from "vitest"
 import type { AgentComponent } from "@ui-sdk/react/agent"
 import { agent } from "../../agent/bridge"
-import {
-  getConfirmation,
-  resolveConfirmation,
-  subscribeConfirmation,
-} from "../../agent/confirmation"
 import { ComposePage } from "./compose-page"
-
-let approve = false
-
-const stopConfirmations = subscribeConfirmation(() => {
-  if (getConfirmation()) resolveConfirmation(approve)
-})
-
-afterEach(() => {
-  approve = false
-})
 
 function renderPage() {
   return render(<ComposePage componentCount={0} onOpenInspector={() => {}} />)
@@ -83,7 +68,7 @@ test("every control is named and exposes its actions", async () => {
   expect(emptyPublish.confirm).toBe("Publishes this post to the feed")
 })
 
-test("an agent fills the form, and publishing waits for a person", async () => {
+test("an agent fills the form and publishes without a popup", async () => {
   renderPage()
   await settle()
 
@@ -112,13 +97,6 @@ test("an agent fills the form, and publishing waits for a person", async () => {
   expect(find("Publish post").disabled).not.toBe(true)
   expect(find("Publish post").actions).toContain("press")
 
-  const refused = await agent.act({
-    steps: [{ ref: "Publish post", action: "press" }],
-  })
-  expect(refused.ok).toBe(false)
-  expect(screen.queryByText("Your post is live")).toBeNull()
-
-  approve = true
   const published = await agent.act({
     steps: [{ ref: "Publish post", action: "press" }],
   })
@@ -128,8 +106,4 @@ test("an agent fills the form, and publishing waits for a person", async () => {
     expect(screen.getByText("Your post is live")).toBeTruthy()
   })
   expect(screen.getByText("A quieter web")).toBeTruthy()
-})
-
-test.afterAll(() => {
-  stopConfirmations()
 })

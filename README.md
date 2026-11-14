@@ -9,10 +9,11 @@ through the ui-sdk agent bridge, calls validated component actions, and verifies
 ## Status
 
 M1 is built, plus the M1.1 voice pass: a Create Post form from ui-sdk components, a single
-agent bridge with a human-approval gate for publishing, and a voice panel (Web Speech adapter +
+agent bridge, and a voice panel (Web Speech adapter +
 typed fallback) that drives the same bridge. Voice uses a deterministic grammar first and the
 Gemini Decisions API for indirect phrasing, and a field name without content starts a
-persistent dictation turn. The feed is not started.
+persistent dictation turn. Consequential controls carry `data-agent-confirm`, and a spoken
+"post this reply" during dictation is a command, not message text. The feed is not started.
 
 ```bash
 bun install
@@ -61,8 +62,9 @@ await window.agent.act({
 await window.agent.act({ steps: [{ ref: "Publish post", action: "press" }] })
 ```
 
-The last call pauses on the in-app approval dialog. Only a person can answer it: the dialog's
-content is `data-agent-hidden`, so it never appears in `snapshot()`.
+The last call runs straight through. Consequential buttons still carry `data-agent-confirm`
+in the snapshot, so an agent can tell which actions are consequential; the app runs them
+without an approval popup.
 
 
 Read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the SDK research, architecture,

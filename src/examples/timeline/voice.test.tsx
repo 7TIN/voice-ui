@@ -51,3 +51,47 @@ test("timeline grammar maps voice to components", async () => {
   expect(isPlan(unknown)).toBe(false)
   expect(isDictation(unknown)).toBe(false)
 })
+
+test("post commands press the open composer's button", async () => {
+  render(<TimelinePage />)
+  await settle()
+
+  const opened = await agent.act({
+    steps: [{ ref: "Reply to Ada Lovelace's post", action: "press" }],
+  })
+  expect(opened.ok, opened.error?.message).toBe(true)
+
+  const cases: Array<[string, string]> = [
+    ["post this reply", "Post reply to Ada Lovelace"],
+    ["post reply", "Post reply to Ada Lovelace"],
+    ["post reply to Ada", "Post reply to Ada Lovelace"],
+    ["post reply to Ada Lovelace", "Post reply to Ada Lovelace"],
+    ["submit this", "Post reply to Ada Lovelace"],
+    ["post it", "Post reply to Ada Lovelace"],
+    ["send it now", "Post reply to Ada Lovelace"],
+  ]
+
+  for (const [said, ref] of cases) {
+    const result = await interpret(said, visibleSnapshot(), timelineVoice)
+    expect(isPlan(result), said).toBe(true)
+    if (!isPlan(result)) continue
+    expect(result.steps, said).toEqual([{ ref, action: "press", args: [] }])
+  }
+
+  // A filled quote composer wins when the command names a quote.
+  const quote = await agent.act({
+    steps: [
+      { ref: "Quote Ada Lovelace's post", action: "press" },
+      { ref: "Your quote of Ada Lovelace", action: "setValue", args: ["Well said"] },
+    ],
+  })
+  expect(quote.ok, quote.error?.message).toBe(true)
+
+  const quoted = await interpret("post this quote", visibleSnapshot(), timelineVoice)
+  expect(isPlan(quoted)).toBe(true)
+  if (isPlan(quoted)) {
+    expect(quoted.steps).toEqual([
+      { ref: "Post quote of Ada Lovelace", action: "press", args: [] },
+    ])
+  }
+})

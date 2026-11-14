@@ -9,7 +9,6 @@ import {
 import { Button } from "@ui-sdk/react/button"
 import { useAgentSnapshot } from "./agent/use-agent-snapshot"
 import { AgentInspector } from "./components/agent-inspector"
-import { ConfirmationDialog } from "./components/confirmation-dialog"
 import { buttonClass } from "./components/button-styles"
 import { CloseIcon, SparkIcon } from "./components/icons"
 import { VoicePill } from "./components/voice-pill"
@@ -89,7 +88,6 @@ export default function App() {
         </div>
       </footer>
 
-      <ConfirmationDialog />
       {dev ? (
         <AgentInspector open={inspectorOpen} onOpenChange={setInspectorOpen} />
       ) : null}

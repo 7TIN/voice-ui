@@ -79,13 +79,12 @@ fail and the error lists the matches — that is useful, not a bug.
 
 | Attribute | Effect |
 | --- | --- |
-| `data-agent-confirm="Publishes this post"` | An agent alone cannot do it. The step waits for `allow` to return `true`. |
+| `data-agent-confirm="Publishes this post"` | Marks the action as consequential. The app's `allow` currently approves it immediately, so the step runs; a future build can gate it on a person instead. |
 | `data-agent-secret` | Agent may type, never read. Value becomes `"[redacted]"`. |
 | `data-agent-hidden` | Component is invisible to `snapshot`/`query`. |
 
-`allow` is asked before the action, and may be asked once more while a popup is opened to
-resolve a label. It returns `boolean` or `Promise<boolean>`. Without it, a confirm-marked step
-fails with `Needs a person`.
+`allow` is asked before the action. It returns `boolean` or `Promise<boolean>`. Without it, a
+confirm-marked step fails with `Needs a person`.
 
 ### 2.4 Custom components are first-class
 
@@ -158,12 +157,12 @@ Tailwind entry must declare the layer first:
 
 | Module | Responsibility | Must not |
 | --- | --- | --- |
-| `src/agent/bridge.ts` | Create the single bridge, wire `allow` to the confirmation controller, expose `window.agent` in dev | Know about speech or UI |
+| `src/agent/bridge.ts` | Create the single bridge, decide the `allow` policy, expose `window.agent` in dev | Know about speech or UI |
 | `src/agent/context.ts` | Focus model: route, current post, last target, open overlay, recent commands | Call the model |
 | `src/agent/snapshot.ts` | Project `agent.snapshot()` into a compact, prompt-safe form | Invent fields |
 | `src/agent/planner.ts` | One LLM call → a `Plan` | Touch the DOM or the bridge |
 | `src/agent/validate.ts` | Check steps against the live snapshot | Run actions |
-| `src/agent/execute.ts` | `agent.act`, confirmations, verification, result reporting | Decide intent |
+| `src/agent/execute.ts` | `agent.act`, verification, result reporting | Decide intent |
 | `src/voice/transcriber.ts` | STT adapter (`start`, `stop`, interim + final events) | Know about components |
 | `src/voice/useVoice.ts` | State machine and wiring | Contain UI |
 | `src/ui/**` | Components and styling | Contain agent logic |
@@ -179,8 +178,10 @@ state directly; UI changes arrive through component callbacks.
 import { createAgent } from "@ui-sdk/react/agent"
 
 export const agent = createAgent({
-  allow: (step, { signal }) =>
-    step.confirm ? askForConfirmation(step.confirm, { signal }) : true,
+  // Consequential steps still carry `data-agent-confirm`; this app runs them
+  // without a popup. To reintroduce a human gate, resolve a Promise here from
+  // an in-app approval card instead.
+  allow: () => true,
 })
 ```
 
@@ -189,10 +190,9 @@ export const agent = createAgent({
 import "./agent/bridge"
 ```
 
-`askForConfirmation` returns a promise resolved by the in-app confirm card (and, from M3, by
-"yes"/"no"). It must reject-resolve `false` on timeout so the step fails cleanly.
-
-Do **not** pass `allow: () => true`. That silently removes the human gate for publish/submit.
+`allow` may return a `Promise<boolean>` resolved by an in-app confirm card. It must
+reject-resolve `false` on timeout so the step fails cleanly. The current build auto-approves
+by choice; the marks on the controls keep describing what is consequential.
 
 ---
 
@@ -233,8 +233,8 @@ from the plan above:
   publish nothing, and the hint says why.
 - Discard's confirm button reads `Delete draft`, deliberately different from the `Discard draft`
   trigger, so a `press` step's text matches one button only.
-- `ConfirmationDialog`, the `AgentInspector`, and the toast region are all `data-agent-hidden`:
-  an agent can neither approve its own request nor drive the dev panel.
+- The `AgentInspector` and the toast region are `data-agent-hidden`: the agent can never
+  drive the dev panel or read toasts as actions.
 - ui-sdk ships no dialog positioning. Its `web.css` theme is not imported, and Tailwind's
   preflight resets the browser's `margin: auto` on a top-layer dialog, so an unstyled
   `DialogContent` lands in the top-left corner. `dialogSurfaceClass` in
@@ -325,7 +325,7 @@ The model finds targets by label, so labels are the API.
 
 ### 6.1 States
 
-`idle → listening → transcribing → planning → confirming → executing → done | error`
+`idle → listening → transcribing → planning → executing → done | error`
 
 Only one command runs at a time; results are serialized through a promise chain so a long
 dictation cannot interleave with a plan. The recognizer is **continuous**: `done` returns to
