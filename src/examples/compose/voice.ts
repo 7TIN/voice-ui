@@ -14,13 +14,13 @@ import {
   spoken,
   unavailable,
   valuePart,
-} from "../../agent/interpret"
+} from "../../agent/interpret.ts"
 import type {
   DictationRequest,
   Plan,
   PlanProblem,
-} from "../../agent/plan"
-import { isPlan } from "../../agent/plan"
+} from "../../agent/plan.ts"
+import { isPlan } from "../../agent/plan.ts"
 import type { ExampleVoice, VoiceRule } from "../types"
 
 const TITLE = "Post title"

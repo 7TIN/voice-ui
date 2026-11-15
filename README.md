@@ -36,6 +36,23 @@ publish the post
 The mic stays open across commands; press Stop to end the session. Without a Gemini key the
 deterministic commands still work and indirect phrasings fall back to a suggestion.
 
+## Deploy
+
+The Gemini key is used only by the server. For local development, put it in `.env` as
+`GEMINI_API_KEY`; Vite's development server proxies `/api/classify` through server middleware.
+Do not use a `VITE_` prefix for secrets.
+
+For a Bun-compatible host:
+
+1. Build with `bun install --frozen-lockfile && bun run build`.
+2. Set `GEMINI_API_KEY` in the host's secret settings. Set `PORT` if the host requires it.
+3. Start with `bun run start` (or deploy the included `Dockerfile`).
+
+The server serves the built app and `/api/classify` from the same origin. The classifier only
+accepts the app's known voice specs, caps request size and transcript/context length, and rate
+limits requests. Deterministic voice commands still work if the key is not configured or Gemini
+is unavailable; only indirect classification needs the API.
+
 ## Scripts
 
 ```bash

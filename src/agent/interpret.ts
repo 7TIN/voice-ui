@@ -1,7 +1,7 @@
 import type { AgentComponent } from "@ui-sdk/react/agent"
-import { classifyIntent } from "./gemini"
-import type { Interpreted, Plan, PlanProblem } from "./plan"
-import { isDictation, isPlan } from "./plan"
+import { classifyIntent } from "./gemini.ts"
+import type { Interpreted, Plan, PlanProblem } from "./plan.ts"
+import { isDictation, isPlan } from "./plan.ts"
 import type { ExampleVoice } from "../examples/types"
 
 /**
@@ -410,42 +410,33 @@ export async function interpret(
   transcript: string,
   snapshot: AgentComponent[],
   voice: ExampleVoice,
-  options?: { apiKey?: string | null },
 ): Promise<Interpreted> {
   // Fast path: deterministic grammar (instant, free, no network).
   const grammarResult = interpretGrammar(transcript, snapshot, voice)
   if (isPlan(grammarResult) || isDictation(grammarResult)) return grammarResult
 
-  // If the grammar didn't match and we have an API key, ask Gemini.
-  const apiKey = options?.apiKey
-  if (apiKey) {
-    const decision = await classifyIntent(
-      transcript,
-      apiKey,
-      controlContext(snapshot),
-      voice,
-    )
-    if (decision) {
-      if (decision.intent !== "unknown" && decision.confidence >= 0.4) {
-        const plan = voice.buildPlan(decision.intent, transcript, snapshot)
-        if (isPlan(plan)) return { ...plan, transcript }
-        // Plan building returned a specific error (bad value, disabled control);
-        // show it instead of a generic "I don't know".
-        if (plan && !isPlan(plan)) return plan
-      }
-
-      // A weak or unknown classification is the same as a miss: use the
-      // grammar's suggestion rather than exposing classifier scores.
-      return grammarResult
+  // The provider key stays server-side; grammar still works if the endpoint is unavailable.
+  const decision = await classifyIntent(
+    transcript,
+    controlContext(snapshot),
+    voice,
+  )
+  if (decision) {
+    if (decision.intent !== "unknown" && decision.confidence >= 0.4) {
+      const plan = voice.buildPlan(decision.intent, transcript, snapshot)
+      if (isPlan(plan)) return { ...plan, transcript }
+      // Plan building returned a specific error (bad value, disabled control);
+      // show it instead of a generic "I don't know".
+      if (plan && !isPlan(plan)) return plan
     }
 
-    // Gemini call failed (null) — API error or network issue.
-    return {
-      error: "I don't know that one yet.",
-      hint: "I couldn't reach the classifier. " + contextHint(snapshot, voice.hint),
-    }
+    // A weak or unknown classification is the same as a miss: use the
+    // grammar's suggestion rather than exposing classifier scores.
+    return grammarResult
   }
 
-  // Fall back to the grammar's "unknown" result.
-  return grammarResult
+  return {
+    error: "I don't know that one yet.",
+    hint: "I couldn't reach the classifier. " + contextHint(snapshot, voice.hint),
+  }
 }

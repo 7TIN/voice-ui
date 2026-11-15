@@ -131,8 +131,8 @@ function extractPostCommand(
 export function useVoice(
   voice: ExampleVoice,
   transcriber?: Transcriber,
-  apiKey?: string | null,
 ): Voice {
+  const dictationPrompt = voice.dictation.prompt
   const speech = useMemo(
     () => transcriber ?? createWebSpeechTranscriber(),
     [transcriber],
@@ -157,12 +157,7 @@ export function useVoice(
     source: "voice" | "typed"
   } | null>(null)
   const runId = useRef(0)
-  const apiKeyRef = useRef(apiKey ?? null)
   const finalizedSpeech = useRef("")
-
-  useEffect(() => {
-    if (apiKey) apiKeyRef.current = apiKey
-  }, [apiKey])
 
   /** Commands are serialized so a long dictation cannot interleave with a plan. */
   const chain = useRef<Promise<void>>(Promise.resolve())
@@ -338,7 +333,7 @@ export function useVoice(
       setStatus("Working out what to do…")
 
       const snapshot = agent.snapshot().filter((entry) => !entry.offPage)
-      const interpreted = await interpret(text, snapshot, voice, { apiKey: apiKeyRef.current })
+      const interpreted = await interpret(text, snapshot, voice)
 
       if (id !== runId.current) return
 
@@ -438,7 +433,7 @@ export function useVoice(
           setStatus((current) =>
             current === "Speech connection lost. Reconnecting…"
               ? dictationRef.current
-                ? voice.dictation.prompt(dictationRef.current.target, dictationRef.current.source)
+                ? dictationPrompt(dictationRef.current.target, dictationRef.current.source)
                 : "Listening — say what you want."
               : current,
           )
@@ -517,7 +512,7 @@ export function useVoice(
           break
       }
     })
-  }, [enqueue, keepListening, speech])
+  }, [dictationPrompt, enqueue, keepListening, speech])
 
   useEffect(
     () => () => {
@@ -535,7 +530,7 @@ export function useVoice(
         setPhase("listening")
         setStatus(
           dictationRef.current
-            ? voice.dictation.prompt(dictationRef.current.target, dictationRef.current.source)
+            ? dictationPrompt(dictationRef.current.target, dictationRef.current.source)
             : "Listening — say what you want.",
         )
       } else {
@@ -544,7 +539,7 @@ export function useVoice(
       }
     }, DONE_RESET_MS)
     return () => clearTimeout(timer)
-  }, [phase])
+  }, [dictationPrompt, phase])
 
   const start = useCallback(() => {
     if (!speech.supported) {

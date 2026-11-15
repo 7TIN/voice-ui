@@ -1,5 +1,5 @@
 import type { AgentComponent } from "@ui-sdk/react/agent"
-import { spoken } from "../../agent/interpret"
+import { spoken } from "../../agent/interpret.ts"
 import type {
   DictationRequest,
   Plan,
@@ -9,7 +9,7 @@ import {
   POST_AUTHORS,
   SUGGESTED_PEOPLE,
   TIMELINE_SECTIONS,
-} from "./data"
+} from "./data.ts"
 
 const hint =
   'Try "like Ada\'s post", "show comments on Kofi\'s post", ' +

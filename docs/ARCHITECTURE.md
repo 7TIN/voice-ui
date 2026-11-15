@@ -391,16 +391,19 @@ finish with the value.
 
 ### 6.4 API keys in a Vite app
 
-Vite ships only client code, so a key in the bundle is public. The current demo setup:
+Vite ships only client code, so any `VITE_*` value is public. The app calls a same-origin
+`/api/classify` endpoint; the endpoint chooses from server-owned voice specs and reads
+`GEMINI_API_KEY` only from the server environment. The browser neither receives nor stores the key.
 
-- `VITE_GEMINI_API_KEY` in `.env` is the first source; `.env` is gitignored and
-  `.env.example` lists the name only.
-- Otherwise the pill's **Key** panel stores the key in `localStorage["gemini-api-key"]`.
-- No key → grammar-only mode. Every deterministic command still works; indirect phrasings fall
-  back to the "I don't know that one yet" hint.
+During development, Vite installs the endpoint as server middleware and loads `GEMINI_API_KEY`
+from the ignored `.env` file. In production, `server.ts` serves the build and endpoint from one
+Bun process. Requests are origin-checked when an Origin header is present, limited by client and
+time window, and capped by body/context/transcript size. Set `GEMINI_API_KEY` in the deploy
+platform's secret settings; never use a `VITE_` prefix. The API remains public, so production
+deployments should also use their host's rate limiting and monitoring for expected traffic.
 
-This is a demo convenience, not a production posture. The open follow-up is a Bun proxy holding
-`GEMINI_API_KEY` server-side and exposing `/api/classify`, so the client bundle stays clean.
+Without the server key or when the classifier is unavailable, deterministic commands still work;
+only indirect phrasings need the Gemini endpoint.
 
 ### 6.5 Dictation and persistence
 

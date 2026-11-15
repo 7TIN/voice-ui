@@ -19,36 +19,31 @@ type TranscriptWord = { id: number; text: string; delay: number }
 export function VoicePill({
   voice: voiceSpec,
   transcriber,
-  apiKey: apiKeyProp,
-  onApiKeyChange,
 }: {
   voice: ExampleVoice
   transcriber?: Transcriber
-  apiKey?: string | null
-  onApiKeyChange?: (key: string) => void
 }) {
-  const [apiKey, setApiKey] = useState<string>(() => {
-    if (apiKeyProp) return apiKeyProp
-    try {
-      const envKey = import.meta.env.VITE_GEMINI_API_KEY
-      if (envKey) return envKey
-      return localStorage.getItem("gemini-api-key") ?? ""
-    } catch {
-      return import.meta.env.VITE_GEMINI_API_KEY ?? ""
-    }
-  })
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const voice = useVoice(voiceSpec, transcriber, apiKey || null)
+  const voice = useVoice(voiceSpec, transcriber)
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
 
   const listening = voice.live
+  const startListening = voice.start
+  const stopListening = voice.stop
   const busy = BUSY.has(voice.phase)
   const dictating = voice.dictation !== null
   const spokenLine = listening ? voice.liveTranscript : ""
   const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[]>([])
   const transcriptWordId = useRef(0)
   const transcriptTrack = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem("gemini-api-key")
+    } catch {
+      // Storage can be unavailable in private browsing contexts.
+    }
+  }, [])
 
   useEffect(() => {
     const nextWords = spokenLine.trim().split(/\s+/).filter(Boolean)
@@ -102,13 +97,13 @@ export function VoicePill({
       }
 
       event.preventDefault()
-      if (listening) voice.stop()
-      else voice.start()
+      if (listening) stopListening()
+      else startListening()
     }
 
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
-  }, [busy, listening, voice.start, voice.stop])
+  }, [busy, listening, startListening, stopListening])
 
   function submitText(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -262,36 +257,7 @@ export function VoicePill({
         >
           Type
         </Button>
-        <Button
-          type="button"
-          aria-expanded={settingsOpen}
-          onClick={() => setSettingsOpen((current) => !current)}
-          className={buttonClass("ghost", "h-8 shrink-0 px-2 text-[12px]")}
-        >
-          Key
-        </Button>
       </div>
-
-      {settingsOpen ? (
-        <div className="mt-2 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2">
-          <Input
-            aria-label="Gemini API key"
-            value={apiKey}
-            onValueChange={(value) => {
-              setApiKey(value)
-              try {
-                localStorage.setItem("gemini-api-key", value)
-              } catch {
-                // ignore
-              }
-              onApiKeyChange?.(value)
-            }}
-            placeholder="Paste Gemini API key (optional)"
-            autoComplete="off"
-            className={`${inputClass} h-9 text-[13px]`}
-          />
-        </div>
-      ) : null}
     </section>
   )
 }
